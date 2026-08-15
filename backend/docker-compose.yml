@@ -7,7 +7,8 @@ services:
       - "3000:3000"
     environment:
       NODE_ENV: development
-      DATABASE_URL: postgres://medini:medini_dev_password@postgres:5432/medini_dev
+      DATABASE_URL: postgres://medini:***@postgres:5432/medini_dev
+      DATABASE_RUNTIME_URL: postgres://medini_app:***@postgres:5432/medini_dev
       REDIS_URL: redis://redis:6379
       JWT_SECRET: dev_only_insecure_jwt_secret_change_me
       JWT_REFRESH_SECRET: dev_only_insecure_refresh_secret_change_me
@@ -25,7 +26,7 @@ services:
       POSTGRES_PASSWORD: medini_dev_password
       POSTGRES_DB: medini_dev
     ports:
-      - "5432:5432"
+      - "5433:5432"   # host 5433 (avoids clash with native PG on 5432)
     volumes:
       - pgdata:/var/lib/postgresql/data
 

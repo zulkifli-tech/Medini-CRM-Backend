@@ -2,18 +2,11 @@ import { Injectable } from '@nestjs/common';
 import {
   can, PermissionContext, RoleAction,
 } from '../architecture/architecture.contract';
+import { Principal } from '../../core/auth/principal';
 
-/**
- * Authenticated principal — resolved from the JWT by the auth layer (Sprint 1+).
- * Sprint 0 defines the shape + the scope-resolution contract only.
- */
-export interface Principal {
-  readonly userId: string;
-  readonly role: string;
-  readonly orgId: string;
-  readonly branchId: string | null;
-  readonly doctorId: string | null;
-}
+/* Principal is defined canonically in core/auth/principal.ts (Sprint 1 Task 2).
+ * Re-exported here for backward compatibility with Sprint 0 imports. */
+export type { Principal } from '../../core/auth/principal';
 
 /**
  * ScopeService — single place that translates a Principal into an authorization

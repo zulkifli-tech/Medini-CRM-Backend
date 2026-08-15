@@ -11,6 +11,7 @@ export const envSchema = z.object({
   API_VERSION: z.string().default('v1'),
 
   DATABASE_URL: z.string().default(''),
+  DATABASE_RUNTIME_URL: z.string().default(''),
   REDIS_URL: z.string().default(''),
 
   JWT_SECRET: z.string().default(''),
@@ -55,6 +56,20 @@ export function validateEnv(config: Record<string, unknown>): Env {
     }
     if (!env.DATABASE_URL) throw new Error('DATABASE_URL is required in production');
     if (!env.REDIS_URL) throw new Error('REDIS_URL is required in production');
+
+    /* GLM R1/R2 + Part 10/23/24: production runtime DB identity must be the
+     * non-owner RLS-subject role (medini_app), never the table owner, and never
+     * the development default credential. */
+    const runtimeUrl = env.DATABASE_RUNTIME_URL || env.DATABASE_URL;
+    if (!env.DATABASE_RUNTIME_URL) {
+      throw new Error('DATABASE_RUNTIME_URL (non-owner medini_app) is required in production');
+    }
+    if (/medini_app_password/i.test(runtimeUrl)) {
+      throw new Error('DATABASE_RUNTIME_URL must not use the development default medini_app credential in production');
+    }
+    if (/postgres:\/\/medini:/i.test(runtimeUrl)) {
+      throw new Error('DATABASE_RUNTIME_URL must use the non-owner runtime role, not the table owner "medini"');
+    }
   }
   return env;
 }

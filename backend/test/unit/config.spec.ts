@@ -20,10 +20,34 @@ describe('configuration — env validation', () => {
     expect(() => validateEnv({ NODE_ENV: 'production', JWT_SECRET: 'real', JWT_REFRESH_SECRET: 'real2', DATABASE_URL: '', REDIS_URL: 'y' })).toThrow(/DATABASE_URL/);
   });
 
+  it('rejects production without a non-owner runtime DB role (DATABASE_RUNTIME_URL)', () => {
+    expect(() => validateEnv({
+      NODE_ENV: 'production', JWT_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'b'.repeat(32),
+      DATABASE_URL: 'postgres://medini:ownerpw@db/medini', REDIS_URL: 'redis://y',
+    })).toThrow(/DATABASE_RUNTIME_URL/);
+  });
+
+  it('rejects production runtime URL that uses the owner role or the dev default password', () => {
+    /* owner role "medini" forbidden at runtime */
+    expect(() => validateEnv({
+      NODE_ENV: 'production', JWT_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'b'.repeat(32),
+      DATABASE_URL: 'postgres://medini:ownerpw@db/medini',
+      DATABASE_RUNTIME_URL: 'postgres://medini:ownerpw@db/medini', REDIS_URL: 'redis://y',
+    })).toThrow(/non-owner runtime role/);
+    /* dev default credential forbidden */
+    expect(() => validateEnv({
+      NODE_ENV: 'production', JWT_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'b'.repeat(32),
+      DATABASE_URL: 'postgres://medini:ownerpw@db/medini',
+      DATABASE_RUNTIME_URL: 'postgres://medini_app:medini_app_password@db/medini', REDIS_URL: 'redis://y',
+    })).toThrow(/development default medini_app credential/);
+  });
+
   it('accepts a complete production config', () => {
     const env = validateEnv({
       NODE_ENV: 'production', JWT_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'b'.repeat(32),
-      DATABASE_URL: 'postgres://x', REDIS_URL: 'redis://y',
+      DATABASE_URL: 'postgres://medini:ownerpw@db/medini',
+      DATABASE_RUNTIME_URL: 'postgres://medini_app:real-runtime-secret@db/medini',
+      REDIS_URL: 'redis://y',
     });
     expect(env.NODE_ENV).toBe('production');
   });

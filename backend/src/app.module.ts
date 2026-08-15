@@ -7,6 +7,8 @@ import { IdempotencyModule } from './shared/idempotency/idempotency.module';
 import { GlobalExceptionFilter } from './shared/errors/global-exception.filter';
 import { ScopeService } from './shared/security/scope.service';
 import { HealthModule } from './infrastructure/health/health.module';
+import { DatabaseModule } from './infrastructure/database/database.module';
+import { AuthModule } from './core/auth/auth.module';
 import { RootController } from './root.controller';
 
 /**
@@ -20,7 +22,9 @@ import { RootController } from './root.controller';
     AppLoggerModule,
     AuditModule,
     IdempotencyModule,
+    DatabaseModule,
     HealthModule,
+    AuthModule,
   ],
   controllers: [RootController],
   providers: [

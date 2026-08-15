@@ -1,22 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { pingDatabase } from '../database/database';
 
 export interface DependencyStatus {
   configured: boolean;
-  status: 'ok' | 'not_configured' | 'pending_sprint';
+  status: 'ok' | 'degraded' | 'not_configured' | 'pending_sprint';
   note?: string;
 }
 
 export interface ReadinessReport {
-  status: 'ready' | 'not_ready';
+  status: 'ready' | 'not_ready' | 'degraded';
   timestamp: string;
   version: string;
   dependencies: Record<string, DependencyStatus>;
 }
 
 /**
- * Sprint 0: dependencies (PostgreSQL/Redis) are NOT wired yet — they report
- * honestly as pending, not as "ok". Liveness = process alive only.
+ * HealthService — honest dependency readiness.
+ * Sprint 1: PostgreSQL is pinged for real when configured (never faked ok).
+ * Redis/BullMQ arrives in the queue phase — still reported as pending.
  */
 @Injectable()
 export class HealthService {
@@ -31,23 +33,39 @@ export class HealthService {
     };
   }
 
-  readiness(): ReadinessReport {
-    const dbConfigured = Boolean(this.config.get<string>('database.url'));
+  async readiness(): Promise<ReadinessReport> {
+    const dbUrl = this.config.get<string>('database.url') ?? '';
     const redisConfigured = Boolean(this.config.get<string>('redis.url'));
-    const dependencies: Record<string, DependencyStatus> = {
-      postgres: {
-        configured: dbConfigured,
-        status: 'pending_sprint',
-        note: 'PostgreSQL connection is established in Sprint 1 (DB phase). Config presence reported only.',
-      },
-      redis: {
-        configured: redisConfigured,
-        status: 'pending_sprint',
-        note: 'Redis/BullMQ connection is established in the queue phase. Config presence reported only.',
-      },
+
+    /* PostgreSQL — real probe when configured. Honest status. */
+    let postgres: DependencyStatus;
+    if (!dbUrl) {
+      postgres = { configured: false, status: 'not_configured', note: 'DATABASE_URL not set.' };
+    } else {
+      const ok = await pingDatabase(dbUrl);
+      postgres = ok
+        ? { configured: true, status: 'ok', note: 'PostgreSQL reachable.' }
+        : { configured: true, status: 'degraded', note: 'PostgreSQL configured but UNREACHABLE.' };
+    }
+
+    const redis: DependencyStatus = {
+      configured: redisConfigured,
+      status: 'pending_sprint',
+      note: 'Redis/BullMQ connection is established in the queue phase. Config presence reported only.',
     };
-    /* Sprint 0 readiness = process + config present; deps intentionally pending. */
-    const status = 'not_ready';
-    return { status, timestamp: new Date().toISOString(), version: this.config.get<string>('app.apiVersion') ?? 'v1', dependencies };
+
+    const dependencies = { postgres, redis };
+    /* ready only if postgres ok; degraded if configured-but-unreachable */
+    const status: ReadinessReport['status'] =
+      postgres.status === 'ok' ? 'ready'
+      : postgres.status === 'degraded' ? 'degraded'
+      : 'not_ready';
+
+    return {
+      status,
+      timestamp: new Date().toISOString(),
+      version: this.config.get<string>('app.apiVersion') ?? 'v1',
+      dependencies,
+    };
   }
 }

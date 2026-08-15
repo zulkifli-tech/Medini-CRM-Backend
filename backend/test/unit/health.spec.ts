@@ -13,19 +13,23 @@ describe('health foundation (honest readiness)', () => {
     expect(typeof live.uptime).toBe('number');
   });
 
-  it('readiness does NOT fake healthy deps at Sprint 0', () => {
+  it('readiness reports not_configured when no DATABASE_URL', async () => {
     const svc = new HealthService(configWith({ 'database.url': '', 'redis.url': '', 'app.apiVersion': 'v1' }));
-    const ready = svc.readiness();
+    const ready = await svc.readiness();
     expect(ready.status).toBe('not_ready');
-    expect(ready.dependencies.postgres?.status).toBe('pending_sprint');
+    expect(ready.dependencies.postgres?.status).toBe('not_configured');
     expect(ready.dependencies.redis?.status).toBe('pending_sprint');
-    expect(ready.dependencies.postgres?.configured).toBe(false);
   });
 
-  it('readiness reports config presence without claiming a live connection', () => {
-    const svc = new HealthService(configWith({ 'database.url': 'postgres://x', 'redis.url': 'redis://y', 'app.apiVersion': 'v1' }));
-    const ready = svc.readiness();
+  it('readiness does NOT fake a healthy DB — reports degraded when unreachable', async () => {
+    /* point at a port nothing listens on → ping fails → degraded, never 'ok' */
+    const svc = new HealthService(configWith({
+      'database.url': 'postgres://localhost:59999/nope',
+      'redis.url': '', 'app.apiVersion': 'v1',
+    }));
+    const ready = await svc.readiness();
+    expect(['degraded', 'not_ready']).toContain(ready.status);
+    expect(ready.dependencies.postgres?.status).toBe('degraded');
     expect(ready.dependencies.postgres?.configured).toBe(true);
-    expect(ready.dependencies.postgres?.status).toBe('pending_sprint'); /* still honest */
-  });
+  }, 15000);
 });

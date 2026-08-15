@@ -204,25 +204,25 @@ export function can(
   if (!(act in cell)) return false;
   if (!cell[act as keyof RoleDomainCell]) return false;
 
-  /* scope enforcement at service level — NOT UI hiding */
+  /* scope enforcement at service level — NOT UI hiding. FAIL-CLOSED (GLM hardening):
+     if the required authorization context is incomplete, DENY. */
   const scope = cell.scope;
   if (scope === 'all') return true;
   if (scope === 'branch') {
-    /* must match actor's branch */
+    /* branch scope: BOTH actor and target branch must be explicitly known. */
     const actorBranch = context.actorBranchId;
-    const targetBranch = context.branchId !== undefined ? context.branchId : actorBranch;
-    if (actorBranch == null) return false; /* non-HQ must have a branch */
+    const targetBranch = context.branchId;
+    if (actorBranch == null) return false;         /* actor must have a branch */
+    if (targetBranch == null) return false;        /* no implicit default to actor branch */
     return targetBranch === actorBranch;
   }
   if (scope === 'own') {
-    /* doctor: own branch AND own doctor/assigned patients */
+    /* own scope: branch AND doctor identity must both be present and match. */
     const aBranch = context.actorBranchId;
-    const tBranch = context.branchId !== undefined ? context.branchId : aBranch;
-    if (aBranch == null || tBranch !== aBranch) return false;
-    if (context.doctorId !== undefined && context.actorDoctorId !== undefined) {
-      return context.doctorId === context.actorDoctorId;
-    }
-    return true;
+    const tBranch = context.branchId;
+    if (aBranch == null || tBranch == null || tBranch !== aBranch) return false;
+    if (context.doctorId == null || context.actorDoctorId == null) return false; /* no silent pass */
+    return context.doctorId === context.actorDoctorId;
   }
   return false;
 }

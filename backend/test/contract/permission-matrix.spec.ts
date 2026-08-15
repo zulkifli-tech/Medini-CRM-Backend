@@ -38,4 +38,21 @@ describe('PERMISSION_MATRIX.can — scope enforcement (server-side)', () => {
   it('branch scope requires an actor branch', () => {
     expect(can('branch_manager', 'patients', 'view', { actorBranchId: null, branchId: 'sentosa' })).toBe(false);
   });
+
+  /* GLM fail-closed hardening (Sprint 1) */
+  it('branch scope DENIES when target branchId is missing (no implicit default to actor branch)', () => {
+    expect(can('branch_manager', 'finance', 'submit', { actorBranchId: 'sentosa' })).toBe(false);
+    expect(can('branch_manager', 'patients', 'view', { actorBranchId: 'sentosa' })).toBe(false);
+  });
+
+  it('own scope DENIES when doctor context is incomplete (no silent pass)', () => {
+    /* missing target doctorId */
+    expect(can('doctor', 'clinical', 'create', { actorBranchId: 'gp', branchId: 'gp', actorDoctorId: 'dr-aina' })).toBe(false);
+    /* missing actorDoctorId */
+    expect(can('doctor', 'clinical', 'create', { actorBranchId: 'gp', branchId: 'gp', doctorId: 'dr-aina' })).toBe(false);
+    /* both missing */
+    expect(can('doctor', 'clinical', 'create', { actorBranchId: 'gp', branchId: 'gp' })).toBe(false);
+    /* missing target branch */
+    expect(can('doctor', 'clinical', 'create', { actorBranchId: 'gp', doctorId: 'dr-aina', actorDoctorId: 'dr-aina' })).toBe(false);
+  });
 });

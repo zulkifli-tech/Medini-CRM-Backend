@@ -12,6 +12,7 @@ export default defineConfig({
     alias: {
       '@shared': resolve(__dirname, 'src/shared'),
       '@modules': resolve(__dirname, 'src/modules'),
+      '@core': resolve(__dirname, 'src/core'),
       '@config': resolve(__dirname, 'src/config'),
       '@infrastructure': resolve(__dirname, 'src/infrastructure'),
     },

@@ -101,7 +101,7 @@ export async function seed(connectionString: string): Promise<{ branches: number
 
 /* CLI: node dist/infrastructure/database/seed.js */
 if (require.main === module) {
-  const url = process.env.DATABASE_URL ?? 'postgres://medini:***@localhost:5433/medini_dev';
+  const url = process.env.DATABASE_URL ?? 'postgres://medini:medini_dev_password@localhost:5433/medini_dev';
   seed(url)
     .then((r) => { console.log(`Seed complete: ${r.branches} branches, ${r.staff} staff`); process.exit(0); })
     .catch((e) => { console.error('Seed failed:', e.message); process.exit(1); });

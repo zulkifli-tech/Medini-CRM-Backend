@@ -22,6 +22,20 @@
       "when": 1786767000002,
       "tag": "0003_rls_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786800000000,
+      "tag": "0004_patient_timeline",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786860000000,
+      "tag": "0005_org_sequences",
+      "breakpoints": true
     }
   ]
 }

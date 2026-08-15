@@ -46,6 +46,24 @@ export class PermissionGuard implements CanActivate {
       doctorId: this.pick(req, 'doctorId'),
     };
 
+    /* Sprint 2 final remediation — Blocker 2: branch-scoped READ (view) must
+     * derive the effective branch from the AUTHENTICATED PRINCIPAL when the
+     * endpoint carries no target branchId (e.g. GET /patients?q=..., dashboard
+     * context, day queue). Without this, daily-operations roles (manager,
+     * reception) got 403 on every read. Foreign-branch reads stay DENIED by
+     * can() (target !== actor branch). MUTATIONS never auto-assume context —
+     * HQ mutation without explicit branchId still yields 422 in the service. */
+    if (required.action === 'view') {
+      if (target.branchId == null && principal.branchId) {
+        target.branchId = principal.branchId;
+      }
+      /* doctor own-scope VIEW: identity also derives from the principal; the
+       * fine-grained doctor↔patient linkage is enforced by the domain service. */
+      if (principal.role === 'doctor' && target.doctorId == null) {
+        target.doctorId = principal.doctorId;
+      }
+    }
+
     const allowed = this.scope.can(principal, required.domain, required.action, target);
     if (!allowed) {
       throw new ForbiddenError('You do not have permission to perform this action');

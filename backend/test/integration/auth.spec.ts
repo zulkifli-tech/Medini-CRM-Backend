@@ -18,10 +18,10 @@ import { UnauthorizedError } from '@shared/errors/errors';
 const RUNTIME_URL =
   process.env.DATABASE_RUNTIME_URL ??
   process.env.DATABASE_URL ??
-  'postgres://medini_app:***@localhost:5433/medini_dev';
+  'postgres://medini_app:medini_app_password@localhost:5433/medini_dev';
 const ADMIN_URL =
   process.env.DATABASE_URL ??
-  'postgres://medini:***@localhost:5433/medini_dev';
+  'postgres://medini:medini_dev_password@localhost:5433/medini_dev';
 
 const probe = pingDatabase(RUNTIME_URL).then((ok) => {
   if (!ok) console.warn('[auth-integration] PostgreSQL not reachable — SKIPPING (honest skip).');
@@ -88,7 +88,8 @@ describe('auth integration (live PG)', () => {
     const p = await principals.resolve(id!, '00000000-0000-0000-0000-000000000001');
     expect(p).not.toBeNull();
     expect(p!.role).toBe('doctor');
-    expect(p!.doctorId).toBe('dr-aina');
+    /* Sprint 2 remediation #4: doctorId = staff UUID (matches appointments.doctor_id FK), NOT doctorRef string */
+    expect(p!.doctorId).toBe(id);
     expect(p!.branchId).toBeTruthy();
     await closeDatabase();
   });

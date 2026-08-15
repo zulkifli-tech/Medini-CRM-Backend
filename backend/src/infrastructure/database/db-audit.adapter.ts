@@ -13,8 +13,16 @@ export class DbAuditAdapter extends AuditPort {
     super();
   }
 
-  async record(event: AuditEvent): Promise<void> {
-    await this.db.insert(auditLog).values({
+  /**
+   * Write the audit row on the SAME transaction connection as the business
+   * mutation when `tx` is provided (Blocker 1 fix: no second pool connection
+   * per request → no pool exhaustion under concurrency; atomic commit/rollback
+   * with the mutation). Falls back to the pool client only when no tx exists
+   * (e.g. login audit before any transaction).
+   */
+  async record(event: AuditEvent, tx?: unknown): Promise<void> {
+    const db = (tx ?? this.db) as Database;
+    await db.insert(auditLog).values({
       orgId: event.orgId,
       branchId: event.branchId,
       actorId: event.actorId,

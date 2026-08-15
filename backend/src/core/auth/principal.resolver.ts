@@ -48,8 +48,10 @@ export class PrincipalResolver {
       .limit(1);
     const ra = raRows[0];
 
-    /* Fall back to the staff.role column when no assignment row exists yet
-     * (seed sets both); role assignment branch wins when present. */
+    /* Sprint 2 remediation #4: doctorId must be the STAFF UUID (staff.id) —
+     * appointments.doctor_id references staff(id). doctorRef is only a
+     * display reference ("dr-aina"), NOT the FK — comparing it against the
+     * UUID column made doctor own-scope permanently 403. */
     const role = (ra?.role ?? member.role) as string;
     const branchId = (ra?.branchId ?? member.branchId) as string | null;
 
@@ -59,7 +61,7 @@ export class PrincipalResolver {
       role,
       orgId: member.orgId,
       branchId,
-      doctorId: member.doctorRef ?? null,
+      doctorId: role === 'doctor' ? member.id : null,
     };
   }
 }

@@ -153,7 +153,31 @@ export const patientRelationships = pgTable('patient_relationships', {
   ...auditCols,
 }, (t) => [
   index('patient_rel_patient_idx').on(t.patientId),
+  index('patient_rel_related_idx').on(t.relatedPatientId),
 ]);
+
+/* ============================================================================
+   6A. PATIENT_TIMELINE_EVENTS — append-only feed (Sprint 2 T1).
+   NOT a source of truth for patient state — a derived activity feed only.
+   No updated_at / deleted_at (same append-only discipline as audit_log).
+   ==========================================================================*/
+export const patientTimelineEvents = pgTable('patient_timeline_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  patientId: uuid('patient_id').notNull().references(() => patients.id, { onDelete: 'cascade' }),
+  type: varchar('type', { length: 64 }).notNull(),             /* e.g. registration|relationship_added|appointment_* */
+  summary: varchar('summary', { length: 512 }).notNull(),      /* human one-liner */
+  payload: jsonb('payload'),                                   /* structured context (no secrets/PII dumps) */
+  actorId: uuid('actor_id'),
+  actorRole: varchar('actor_role', { length: 32 }),
+  source: varchar('source', { length: 32 }).notNull().default('api'),
+  correlationId: varchar('correlation_id', { length: 128 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('patient_timeline_patient_idx').on(t.patientId, t.createdAt),
+  index('patient_timeline_type_idx').on(t.type),
+]);
+/* NOTE: patient_timeline_events has NO updated_at / deleted_at — append-only. */
 
 /* ============================================================================
    6. APPOINTMENTS — appointmentMaster. Status flow enforced.
@@ -282,6 +306,7 @@ export type Staff = typeof staff.$inferSelect;
 export type RoleAssignment = typeof roleAssignments.$inferSelect;
 export type Patient = typeof patients.$inferSelect;
 export type PatientRelationship = typeof patientRelationships.$inferSelect;
+export type PatientTimelineEvent = typeof patientTimelineEvents.$inferSelect;
 export type Appointment = typeof appointments.$inferSelect;
 export type PaymentStatus = typeof paymentStatus.$inferSelect;
 export type AuditLog = typeof auditLog.$inferSelect;

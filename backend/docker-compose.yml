@@ -7,8 +7,8 @@ services:
       - "3000:3000"
     environment:
       NODE_ENV: development
-      DATABASE_URL: postgres://medini:***@postgres:5432/medini_dev
-      DATABASE_RUNTIME_URL: postgres://medini_app:***@postgres:5432/medini_dev
+      DATABASE_URL: postgres://medini:medini_dev_password@postgres:5432/medini_dev
+      DATABASE_RUNTIME_URL: postgres://medini_app:medini_app_password@postgres:5432/medini_dev
       REDIS_URL: redis://redis:6379
       JWT_SECRET: dev_only_insecure_jwt_secret_change_me
       JWT_REFRESH_SECRET: dev_only_insecure_refresh_secret_change_me

@@ -23,5 +23,13 @@ export interface AuditEvent {
 
 /** Port — implemented by a persistent adapter later. */
 export abstract class AuditPort {
-  abstract record(event: AuditEvent): Promise<void> | void;
+  /**
+   * Record an audit event. `tx` is OPTIONAL: when provided (a request's
+   * runAs transaction), the adapter MUST write on that SAME connection so
+   * business mutation + audit commit/rollback atomically (Sprint 2 final
+   * remediation — Blocker 1: no second pool connection per request).
+   * When omitted (e.g. pre-transaction login audit) the adapter uses its
+   * own connection.
+   */
+  abstract record(event: AuditEvent, tx?: unknown): Promise<void> | void;
 }

@@ -23,7 +23,7 @@ import { DbAuditAdapter } from '@infrastructure/database/db-audit.adapter';
  */
 const URL =
   process.env.DATABASE_URL ??
-  'postgres://medini:***@localhost:5433/medini_dev';
+  'postgres://medini:medini_dev_password@localhost:5433/medini_dev';
 
 const probe: Promise<boolean> = pingDatabase(URL).then((ok) => {
   if (!ok) {
@@ -152,13 +152,14 @@ describe('database integration (live PG)', () => {
   });
 
   /* ---- Schema integrity (live) ---- */
-  dbIt('schema: 11 canonical tables exist', async () => {
+  dbIt('schema: canonical tables exist (11 Sprint 1 + patient_timeline_events = 12)', async () => {
     const db = createDatabase(URL);
     const res = await db.execute(
       sql`SELECT count(*)::int AS n FROM information_schema.tables
           WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`,
     );
-    expect((res as RawRows).rows[0]?.n).toBe(11);
+    /* Sprint 2 T1 added patient_timeline_events — growth-safe (>= 11). */
+    expect((res as RawRows).rows[0]?.n).toBeGreaterThanOrEqual(11);
     await closeDatabase();
   });
 

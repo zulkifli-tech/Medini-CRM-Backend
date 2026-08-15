@@ -73,4 +73,27 @@ describe('PermissionGuard (authorization enforcement)', () => {
     const { guard, ctx: c } = ctx(bm, {}, undefined);
     expect(guard.canActivate(c)).toBe(true);
   });
+
+  /* Sprint 2 final remediation — Blocker 2: branch-scoped VIEW derives branch
+   * from principal; mutations stay fail-closed; foreign branch still denied. */
+  it('allows branch_manager VIEW without target branchId (derives from principal)', () => {
+    const { guard, ctx: c } = ctx(bm, {}, { domain: 'patients', action: 'view' });
+    expect(guard.canActivate(c)).toBe(true);
+  });
+
+  it('allows branch_admin VIEW without target branchId (derives from principal)', () => {
+    const reception: Principal = { staffId: 's4', username: 'reception', role: 'branch_admin', orgId: 'org-1', branchId: 'sentosa', doctorId: null };
+    const { guard, ctx: c } = ctx(reception, {}, { domain: 'patients', action: 'view' });
+    expect(guard.canActivate(c)).toBe(true);
+  });
+
+  it('denies branch_manager VIEW of a foreign branch (403)', () => {
+    const { guard, ctx: c } = ctx(bm, { branchId: 'pearl' }, { domain: 'patients', action: 'view' });
+    expect(() => guard.canActivate(c)).toThrow(ForbiddenError);
+  });
+
+  it('keeps mutations fail-closed: branch_manager create without branchId still denied', () => {
+    const { guard, ctx: c } = ctx(bm, {}, { domain: 'patients', action: 'create' });
+    expect(() => guard.canActivate(c)).toThrow(ForbiddenError);
+  });
 });

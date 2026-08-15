@@ -9,6 +9,9 @@ import { ScopeService } from './shared/security/scope.service';
 import { HealthModule } from './infrastructure/health/health.module';
 import { DatabaseModule } from './infrastructure/database/database.module';
 import { AuthModule } from './core/auth/auth.module';
+import { PatientsModule } from './modules/patients/patients.module';
+import { AppointmentsModule } from './modules/appointments/appointments.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { RootController } from './root.controller';
 
 /**
@@ -25,6 +28,9 @@ import { RootController } from './root.controller';
     DatabaseModule,
     HealthModule,
     AuthModule,
+    PatientsModule,
+    AppointmentsModule,
+    DashboardModule,
   ],
   controllers: [RootController],
   providers: [

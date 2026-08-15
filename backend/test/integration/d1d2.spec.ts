@@ -21,7 +21,7 @@ import { JwtService } from '@nestjs/jwt';
 const RUNTIME_URL =
   process.env.DATABASE_RUNTIME_URL ??
   process.env.DATABASE_URL ??
-  'postgres://medini_app:***@localhost:5433/medini_dev';
+  'postgres://medini_app:medini_app_password@localhost:5433/medini_dev';
 
 const probe = pingDatabase(RUNTIME_URL).then((ok) => {
   if (!ok) console.warn('[d1d2] PostgreSQL not reachable — SKIPPING (honest skip).');

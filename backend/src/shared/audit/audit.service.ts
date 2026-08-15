@@ -6,7 +6,7 @@ import { getCorrelationId } from '../correlation/correlation';
 @Injectable()
 export class InMemoryAuditAdapter extends AuditPort {
   readonly events: AuditEvent[] = [];
-  record(event: AuditEvent): void {
+  record(event: AuditEvent, _tx?: unknown): void {
     this.events.push(event);
     if (this.events.length > 1000) this.events.shift();
   }
@@ -36,7 +36,7 @@ export interface RecordAuditInput {
 export class AuditService {
   constructor(@Optional() @Inject(AUDIT_PORT) private readonly port?: AuditPort) {}
 
-  async record(input: RecordAuditInput): Promise<AuditEvent> {
+  async record(input: RecordAuditInput, tx?: unknown): Promise<AuditEvent> {
     const event: AuditEvent = {
       actorId: input.actorId,
       actorRole: input.actorRole,
@@ -51,7 +51,9 @@ export class AuditService {
       correlationId: getCorrelationId(),
       timestamp: new Date().toISOString(),
     };
-    await this.port?.record(event);
+    /* Pass the request transaction through (Blocker 1 fix) so the audit row
+     * commits/rolls back WITH the business mutation on the SAME connection. */
+    await this.port?.record(event, tx);
     return event;
   }
 }

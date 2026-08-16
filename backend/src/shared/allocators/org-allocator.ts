@@ -16,7 +16,7 @@ import { DbClient } from '../../modules/patients/infrastructure/patients.reposit
 export class OrgAllocator {
   constructor(private readonly tx: DbClient) {}
 
-  private seqName(prefix: 'mrn' | 'apt' | 'pnl' | 'ins' | 'enc' | 'tpl' | 'trt', orgId: string): string {
+  private seqName(prefix: 'mrn' | 'apt' | 'pnl' | 'ins' | 'enc' | 'tpl' | 'trt' | 'sal' | 'exp' | 'rec' | 'cst' | 'lab' | 'com' | 'ext', orgId: string): string {
     const key = orgId.replace(/-/g, '').slice(-8).toLowerCase();
     return `medini_${prefix}_${key}`;
   }
@@ -90,5 +90,73 @@ export class OrgAllocator {
     );
     const n = (rows as unknown as { rows: Array<{ n: number }> }).rows[0]!.n;
     return `TRT-${String(n).padStart(4, '0')}`;
+  }
+
+  /* Sprint 4 (S4-T1) — finance codes share the identical org-safe,
+   * concurrency-safe sequence mechanism (sequences pre-created by migration
+   * 0009, admin path). MRN/APT/PNL/INS/ENC/TPL/TRT behaviour unchanged.
+   * NOT inv/pay — POS/Bukku own invoice/payment numbering. */
+
+  /** Next sale record code for the org, e.g. SAL-0001. */
+  async nextSaleCode(orgId: string): Promise<string> {
+    const rows = await this.tx.execute(
+      sql`SELECT nextval(${sql.raw(`'${this.seqName('sal', orgId)}'`)})::int AS n`,
+    );
+    const n = (rows as unknown as { rows: Array<{ n: number }> }).rows[0]!.n;
+    return `SAL-${String(n).padStart(4, '0')}`;
+  }
+
+  /** Next expense code for the org, e.g. EXP-0001. */
+  async nextExpenseCode(orgId: string): Promise<string> {
+    const rows = await this.tx.execute(
+      sql`SELECT nextval(${sql.raw(`'${this.seqName('exp', orgId)}'`)})::int AS n`,
+    );
+    const n = (rows as unknown as { rows: Array<{ n: number }> }).rows[0]!.n;
+    return `EXP-${String(n).padStart(4, '0')}`;
+  }
+
+  /** Next recurring commitment code for the org, e.g. RC-0001. */
+  async nextRecurringCode(orgId: string): Promise<string> {
+    const rows = await this.tx.execute(
+      sql`SELECT nextval(${sql.raw(`'${this.seqName('rec', orgId)}'`)})::int AS n`,
+    );
+    const n = (rows as unknown as { rows: Array<{ n: number }> }).rows[0]!.n;
+    return `RC-${String(n).padStart(4, '0')}`;
+  }
+
+  /** Next treatment cost code for the org, e.g. CST-0001. */
+  async nextCostCode(orgId: string): Promise<string> {
+    const rows = await this.tx.execute(
+      sql`SELECT nextval(${sql.raw(`'${this.seqName('cst', orgId)}'`)})::int AS n`,
+    );
+    const n = (rows as unknown as { rows: Array<{ n: number }> }).rows[0]!.n;
+    return `CST-${String(n).padStart(4, '0')}`;
+  }
+
+  /** Next lab payable code for the org, e.g. LAB-0001. */
+  async nextLabCode(orgId: string): Promise<string> {
+    const rows = await this.tx.execute(
+      sql`SELECT nextval(${sql.raw(`'${this.seqName('lab', orgId)}'`)})::int AS n`,
+    );
+    const n = (rows as unknown as { rows: Array<{ n: number }> }).rows[0]!.n;
+    return `LAB-${String(n).padStart(4, '0')}`;
+  }
+
+  /** Next commission ledger code for the org, e.g. COM-0001. */
+  async nextCommissionCode(orgId: string): Promise<string> {
+    const rows = await this.tx.execute(
+      sql`SELECT nextval(${sql.raw(`'${this.seqName('com', orgId)}'`)})::int AS n`,
+    );
+    const n = (rows as unknown as { rows: Array<{ n: number }> }).rows[0]!.n;
+    return `COM-${String(n).padStart(4, '0')}`;
+  }
+
+  /** Next external invoice ref code for the org, e.g. EXT-0001. */
+  async nextExternalRefCode(orgId: string): Promise<string> {
+    const rows = await this.tx.execute(
+      sql`SELECT nextval(${sql.raw(`'${this.seqName('ext', orgId)}'`)})::int AS n`,
+    );
+    const n = (rows as unknown as { rows: Array<{ n: number }> }).rows[0]!.n;
+    return `EXT-${String(n).padStart(4, '0')}`;
   }
 }

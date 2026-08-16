@@ -16,7 +16,7 @@
  */
 import {
   pgTable, uuid, text, varchar, integer, boolean, date, time,
-  timestamp, jsonb, pgEnum, uniqueIndex, index, check,
+  timestamp, jsonb, pgEnum, uniqueIndex, index, check, numeric,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
@@ -231,6 +231,11 @@ export const paymentStatus = pgTable('payment_status', {
   paidDate: date('paid_date'),
   updatedByRole: varchar('updated_by_role', { length: 32 }),
   paymentReference: varchar('payment_reference', { length: 128 }), /* external ref (FPX/Card) */
+  /* Sprint 4 (S4-T1) — extend for Finance: confirm tracking + external source */
+  confirmedBy: uuid('confirmed_by'),
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+  externalRef: varchar('external_ref', { length: 128 }),
+  sourceSystem: varchar('source_system', { length: 32 }).default('external'),
   ...auditCols,
 }, (t) => [
   uniqueIndex('payment_status_patient_uq').on(t.patientId),
@@ -675,6 +680,309 @@ export const clinicalTimelineEvents = pgTable('clinical_timeline_events', {
   index('clinical_timeline_type_idx').on(t.type),
 ]);
 
+/* ============================================================================
+   SPRINT 4 (S4-T1) — FINANCE FOUNDATION
+   Operational financial records. NOT POS, NOT accounting, NOT invoice issuer.
+   POS transacts. CRM records/monitors/calculates/alerts. Bukku accounts.
+   Money: numeric(19,4). NO float. Allocators: sal/exp/rec/cst/lab/com/ext.
+   ==========================================================================*/
+
+/* ---------- Finance enums ---------- */
+export const saleRecordStatusEnum = pgEnum('sale_record_status', ['recorded', 'confirmed', 'cancelled']);
+export const expenseStatusEnum = pgEnum('expense_status', ['draft', 'pending_approval', 'approved', 'paid', 'rejected', 'cancelled']);
+export const recurringStatusEnum = pgEnum('recurring_status', ['active', 'paused', 'cancelled']);
+export const labPayableStatusEnum = pgEnum('lab_payable_status', ['DRAFT', 'OUTSTANDING', 'PARTIALLY_PAID', 'PAID', 'VOID']);
+export const commissionStatusEnum = pgEnum('commission_status', ['calculated', 'pending_review', 'approved', 'scheduled', 'paid', 'cancelled']);
+export const financeAlertSeverityEnum = pgEnum('finance_alert_severity', ['critical', 'high', 'medium', 'low', 'info']);
+export const financeAlertStatusEnum = pgEnum('finance_alert_status', ['open', 'acknowledged', 'resolved', 'dismissed']);
+export const syncStatusEnum = pgEnum('sync_status', ['pending', 'queued', 'syncing', 'synced', 'error', 'conflict']);
+export const reconciliationStatusEnum = pgEnum('reconciliation_status', ['pending', 'matched', 'conflict', 'resolved']);
+
+/* 28. SALE_RECORDS — revenue analytics (POS reference, CRM=record). */
+export const saleRecords = pgTable('sale_records', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  patientId: uuid('patient_id').references(() => patients.id, { onDelete: 'restrict' }),
+  saleCode: varchar('sale_code', { length: 32 }).notNull(),
+  externalRef: varchar('external_ref', { length: 128 }),
+  sourceSystem: varchar('source_system', { length: 32 }).notNull().default('pos'),
+  amount: numeric('amount', { precision: 19, scale: 4 }).notNull(),
+  saleDate: date('sale_date').notNull(),
+  status: saleRecordStatusEnum('status').notNull().default('recorded'),
+  notes: varchar('notes', { length: 512 }),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('sale_records_org_code_uq').on(t.orgId, t.saleCode),
+  index('sale_records_branch_idx').on(t.branchId),
+  index('sale_records_patient_idx').on(t.patientId),
+  index('sale_records_date_idx').on(t.saleDate),
+  index('sale_records_status_idx').on(t.status),
+]);
+
+/* 29. EXPENSES — operational expense records (CRM-owned). */
+export const expenses = pgTable('expenses', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  expenseCode: varchar('expense_code', { length: 32 }).notNull(),
+  category: varchar('category', { length: 64 }).notNull(),
+  subcategory: varchar('subcategory', { length: 128 }),
+  payee: varchar('payee', { length: 256 }).notNull(),
+  amount: numeric('amount', { precision: 19, scale: 4 }).notNull(),
+  expenseDate: date('expense_date').notNull(),
+  dueDate: date('due_date'),
+  status: expenseStatusEnum('status').notNull().default('draft'),
+  recurringId: uuid('recurring_id'),
+  externalRef: varchar('external_ref', { length: 128 }),
+  notes: varchar('notes', { length: 512 }),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('expenses_org_code_uq').on(t.orgId, t.expenseCode),
+  index('expenses_branch_idx').on(t.branchId),
+  index('expenses_category_idx').on(t.category),
+  index('expenses_status_idx').on(t.status),
+  index('expenses_due_date_idx').on(t.dueDate),
+  index('expenses_recurring_idx').on(t.recurringId),
+]);
+
+/* 30. RECURRING_COMMITMENTS — recurring items (CRM-owned). */
+export const recurringCommitments = pgTable('recurring_commitments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  recurringCode: varchar('recurring_code', { length: 32 }).notNull(),
+  name: varchar('name', { length: 256 }).notNull(),
+  category: varchar('category', { length: 64 }).notNull(),
+  amount: numeric('amount', { precision: 19, scale: 4 }).notNull(),
+  frequency: varchar('frequency', { length: 32 }).notNull(),
+  nextDueDate: date('next_due_date').notNull(),
+  status: recurringStatusEnum('status').notNull().default('active'),
+  autoCreate: boolean('auto_create').notNull().default(false),
+  externalRef: varchar('external_ref', { length: 128 }),
+  notes: varchar('notes', { length: 512 }),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('recurring_commitments_org_code_uq').on(t.orgId, t.recurringCode),
+  index('recurring_commitments_branch_idx').on(t.branchId),
+  index('recurring_commitments_category_idx').on(t.category),
+  index('recurring_commitments_next_due_idx').on(t.nextDueDate),
+  index('recurring_commitments_status_idx').on(t.status),
+]);
+
+/* 31. TREATMENT_COSTS — treatment cost (Finance owns, link Clinical). */
+export const treatmentCosts = pgTable('treatment_costs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  patientId: uuid('patient_id').notNull().references(() => patients.id, { onDelete: 'restrict' }),
+  planId: uuid('plan_id').notNull().references(() => treatmentPlans.id, { onDelete: 'restrict' }),
+  encounterId: uuid('encounter_id').references(() => encounters.id, { onDelete: 'restrict' }),
+  costCode: varchar('cost_code', { length: 32 }).notNull(),
+  treatmentId: uuid('treatment_id').references(() => treatmentCatalog.id, { onDelete: 'restrict' }),
+  description: varchar('description', { length: 256 }).notNull(),
+  quantity: integer('quantity').notNull().default(1),
+  unitCost: numeric('unit_cost', { precision: 19, scale: 4 }).notNull(),
+  totalCost: numeric('total_cost', { precision: 19, scale: 4 }).notNull(),
+  costDate: date('cost_date').notNull(),
+  externalRef: varchar('external_ref', { length: 128 }),
+  notes: varchar('notes', { length: 512 }),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('treatment_costs_org_code_uq').on(t.orgId, t.costCode),
+  index('treatment_costs_branch_idx').on(t.branchId),
+  index('treatment_costs_patient_idx').on(t.patientId),
+  index('treatment_costs_plan_idx').on(t.planId),
+  index('treatment_costs_encounter_idx').on(t.encounterId),
+  index('treatment_costs_treatment_idx').on(t.treatmentId),
+  index('treatment_costs_date_idx').on(t.costDate),
+]);
+
+/* 32. LAB_PAYABLES — lab cost lifecycle (operational tracking). */
+export const labPayables = pgTable('lab_payables', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  treatmentCostId: uuid('treatment_cost_id').references(() => treatmentCosts.id, { onDelete: 'restrict' }),
+  labCode: varchar('lab_code', { length: 32 }).notNull(),
+  labName: varchar('lab_name', { length: 256 }).notNull(),
+  caseRef: varchar('case_ref', { length: 128 }),
+  externalInvoiceRef: varchar('external_invoice_ref', { length: 128 }),
+  amount: numeric('amount', { precision: 19, scale: 4 }).notNull(),
+  paidAmount: numeric('paid_amount', { precision: 19, scale: 4 }).notNull().default('0'),
+  outstandingAmount: numeric('outstanding_amount', { precision: 19, scale: 4 }).notNull(),
+  dueDate: date('due_date').notNull(),
+  status: labPayableStatusEnum('status').notNull().default('DRAFT'),
+  externalRef: varchar('external_ref', { length: 128 }),
+  notes: varchar('notes', { length: 512 }),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('lab_payables_org_code_uq').on(t.orgId, t.labCode),
+  index('lab_payables_branch_idx').on(t.branchId),
+  index('lab_payables_treatment_cost_idx').on(t.treatmentCostId),
+  index('lab_payables_status_idx').on(t.status),
+  index('lab_payables_due_date_idx').on(t.dueDate),
+]);
+
+/* 33. COMMISSION_LEDGER — doctor commission calculation (CRM source of truth). */
+export const commissionLedger = pgTable('commission_ledger', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  doctorId: uuid('doctor_id').notNull().references(() => staff.id, { onDelete: 'restrict' }),
+  commissionCode: varchar('commission_code', { length: 32 }).notNull(),
+  period: varchar('period', { length: 32 }).notNull(),
+  grossRevenue: numeric('gross_revenue', { precision: 19, scale: 4 }).notNull(),
+  eligibleDirectCosts: numeric('eligible_direct_costs', { precision: 19, scale: 4 }).notNull().default('0'),
+  commissionBase: numeric('commission_base', { precision: 19, scale: 4 }).notNull(),
+  rate: numeric('rate', { precision: 5, scale: 4 }).notNull(),
+  commissionAmount: numeric('commission_amount', { precision: 19, scale: 4 }).notNull(),
+  adjustment: numeric('adjustment', { precision: 19, scale: 4 }).notNull().default('0'),
+  netPayable: numeric('net_payable', { precision: 19, scale: 4 }).notNull(),
+  paidAmount: numeric('paid_amount', { precision: 19, scale: 4 }).notNull().default('0'),
+  outstandingAmount: numeric('outstanding_amount', { precision: 19, scale: 4 }).notNull(),
+  status: commissionStatusEnum('status').notNull().default('calculated'),
+  externalRef: varchar('external_ref', { length: 128 }),
+  notes: varchar('notes', { length: 512 }),
+  version: integer('version').notNull().default(1),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('commission_ledger_org_code_uq').on(t.orgId, t.commissionCode),
+  index('commission_ledger_branch_idx').on(t.branchId),
+  index('commission_ledger_doctor_idx').on(t.doctorId),
+  index('commission_ledger_period_idx').on(t.period),
+  index('commission_ledger_status_idx').on(t.status),
+]);
+
+/* 34. COMMISSION_PAYOUTS — payout status tracking. */
+export const commissionPayouts = pgTable('commission_payouts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  commissionLedgerId: uuid('commission_ledger_id').notNull().references(() => commissionLedger.id, { onDelete: 'restrict' }),
+  payoutDate: date('payout_date').notNull(),
+  amount: numeric('amount', { precision: 19, scale: 4 }).notNull(),
+  method: varchar('method', { length: 32 }),
+  externalRef: varchar('external_ref', { length: 128 }),
+  notes: varchar('notes', { length: 512 }),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [
+  index('commission_payouts_branch_idx').on(t.branchId),
+  index('commission_payouts_ledger_idx').on(t.commissionLedgerId),
+  index('commission_payouts_date_idx').on(t.payoutDate),
+]);
+
+/* 35. FINANCE_ALERTS — radar alerts (derived, management alert layer). */
+export const financeAlerts = pgTable('finance_alerts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  alertType: varchar('alert_type', { length: 64 }).notNull(),
+  severity: financeAlertSeverityEnum('severity').notNull(),
+  status: financeAlertStatusEnum('status').notNull().default('open'),
+  entityType: varchar('entity_type', { length: 64 }),
+  entityId: uuid('entity_id'),
+  title: varchar('title', { length: 256 }).notNull(),
+  message: text('message').notNull(),
+  amount: numeric('amount', { precision: 19, scale: 4 }),
+  dueDate: date('due_date'),
+  acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
+  acknowledgedBy: uuid('acknowledged_by'),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  resolvedBy: uuid('resolved_by'),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [
+  index('finance_alerts_branch_idx').on(t.branchId),
+  index('finance_alerts_type_idx').on(t.alertType),
+  index('finance_alerts_severity_idx').on(t.severity),
+  index('finance_alerts_status_idx').on(t.status),
+  index('finance_alerts_entity_idx').on(t.entityType, t.entityId),
+]);
+
+/* 36. EXTERNAL_INVOICE_REFS — POS/Bukku invoice reference (NOT invoice engine). */
+export const externalInvoiceRefs = pgTable('external_invoice_refs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  patientId: uuid('patient_id').references(() => patients.id, { onDelete: 'restrict' }),
+  treatmentCostId: uuid('treatment_cost_id').references(() => treatmentCosts.id, { onDelete: 'restrict' }),
+  refCode: varchar('ref_code', { length: 32 }).notNull(),
+  externalInvoiceNumber: varchar('external_invoice_number', { length: 128 }).notNull(),
+  sourceSystem: varchar('source_system', { length: 32 }).notNull(),
+  amount: numeric('amount', { precision: 19, scale: 4 }).notNull(),
+  invoiceDate: date('invoice_date').notNull(),
+  status: varchar('status', { length: 32 }),
+  externalRef: varchar('external_ref', { length: 128 }),
+  syncMetadata: jsonb('sync_metadata'),
+  notes: varchar('notes', { length: 512 }),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('external_invoice_refs_org_code_uq').on(t.orgId, t.refCode),
+  uniqueIndex('external_invoice_refs_org_external_uq').on(t.orgId, t.sourceSystem, t.externalInvoiceNumber),
+  index('external_invoice_refs_branch_idx').on(t.branchId),
+  index('external_invoice_refs_patient_idx').on(t.patientId),
+  index('external_invoice_refs_treatment_cost_idx').on(t.treatmentCostId),
+  index('external_invoice_refs_external_number_idx').on(t.externalInvoiceNumber),
+]);
+
+/* 37. BUKKU_SYNC_RECORDS — sync queue + metadata (architecture ONLY). */
+export const bukkuSyncRecords = pgTable('bukku_sync_records', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  entityType: varchar('entity_type', { length: 64 }).notNull(),
+  entityId: uuid('entity_id').notNull(),
+  syncStatus: syncStatusEnum('sync_status').notNull().default('pending'),
+  bukkuId: varchar('bukku_id', { length: 128 }),
+  idempotencyKey: varchar('idempotency_key', { length: 256 }).notNull(),
+  version: integer('version').notNull().default(1),
+  lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+  syncError: text('sync_error'),
+  retryCount: integer('retry_count').notNull().default(0),
+  syncMetadata: jsonb('sync_metadata'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdBy: uuid('created_by'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: uuid('updated_by'),
+}, (t) => [
+  uniqueIndex('bukku_sync_records_org_entity_uq').on(t.orgId, t.entityType, t.entityId),
+  uniqueIndex('bukku_sync_records_idempotency_uq').on(t.idempotencyKey),
+  index('bukku_sync_records_status_idx').on(t.syncStatus),
+  index('bukku_sync_records_entity_idx').on(t.entityType, t.entityId),
+]);
+
+/* 38. RECONCILIATION_RECORDS — conflict detection + audit. */
+export const reconciliationRecords = pgTable('reconciliation_records', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  entityType: varchar('entity_type', { length: 64 }).notNull(),
+  entityId: uuid('entity_id').notNull(),
+  bukkuSyncRecordId: uuid('bukku_sync_record_id').references(() => bukkuSyncRecords.id, { onDelete: 'restrict' }),
+  reconciliationStatus: reconciliationStatusEnum('reconciliation_status').notNull().default('pending'),
+  crmValue: jsonb('crm_value'),
+  bukkuValue: jsonb('bukku_value'),
+  conflictFields: text('conflict_fields').array(),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  resolvedBy: uuid('resolved_by'),
+  resolutionNotes: text('resolution_notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdBy: uuid('created_by'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: uuid('updated_by'),
+}, (t) => [
+  index('reconciliation_records_entity_idx').on(t.entityType, t.entityId),
+  index('reconciliation_records_status_idx').on(t.reconciliationStatus),
+  index('reconciliation_records_sync_idx').on(t.bukkuSyncRecordId),
+]);
+
 /* ---------- Type exports ---------- */
 export type Branch = typeof branches.$inferSelect;
 export type Staff = typeof staff.$inferSelect;
@@ -705,3 +1013,15 @@ export type Prescription = typeof prescriptions.$inferSelect;
 export type AdverseEvent = typeof adverseEvents.$inferSelect;
 export type Referral = typeof referrals.$inferSelect;
 export type ClinicalTimelineEvent = typeof clinicalTimelineEvents.$inferSelect;
+/* Sprint 4 (S4-T1) — finance foundation types */
+export type SaleRecord = typeof saleRecords.$inferSelect;
+export type Expense = typeof expenses.$inferSelect;
+export type RecurringCommitment = typeof recurringCommitments.$inferSelect;
+export type TreatmentCost = typeof treatmentCosts.$inferSelect;
+export type LabPayable = typeof labPayables.$inferSelect;
+export type CommissionLedger = typeof commissionLedger.$inferSelect;
+export type CommissionPayout = typeof commissionPayouts.$inferSelect;
+export type FinanceAlert = typeof financeAlerts.$inferSelect;
+export type ExternalInvoiceRef = typeof externalInvoiceRefs.$inferSelect;
+export type BukkuSyncRecord = typeof bukkuSyncRecords.$inferSelect;
+export type ReconciliationRecord = typeof reconciliationRecords.$inferSelect;

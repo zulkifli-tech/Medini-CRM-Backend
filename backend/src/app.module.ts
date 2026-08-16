@@ -14,6 +14,7 @@ import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { PayorsModule } from './modules/payors/payors.module';
 import { ClinicalModule } from './modules/clinical/clinical.module';
+import { FinanceModule } from './modules/finance/finance.module';
 import { RootController } from './root.controller';
 
 /**
@@ -35,6 +36,7 @@ import { RootController } from './root.controller';
     DashboardModule,
     PayorsModule,
     ClinicalModule,
+    FinanceModule,
   ],
   controllers: [RootController],
   providers: [

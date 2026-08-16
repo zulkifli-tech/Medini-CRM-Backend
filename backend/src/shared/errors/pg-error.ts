@@ -32,6 +32,20 @@ const UNIQUE_CONSTRAINT_MESSAGES: Record<string, string> = {
   tooth_records_enc_tooth_uq: 'Tooth record already exists for this encounter',
   treatment_sessions_plan_no_uq: 'Session number already exists for this plan',
   consent_templates_title_version_uq: 'Consent template version already exists',
+  /* Sprint 4 (S4-T1) — finance foundation (migration 0009 constraints) */
+  sale_records_org_code_uq: 'Sale record code already exists',
+  sale_records_org_external_ref_uq: 'External sale reference already exists',
+  expenses_org_code_uq: 'Expense code already exists',
+  recurring_commitments_org_code_uq: 'Recurring commitment code already exists',
+  treatment_costs_org_code_uq: 'Treatment cost code already exists',
+  lab_payables_org_code_uq: 'Lab payable code already exists',
+  commission_ledger_org_code_uq: 'Commission code already exists',
+  external_invoice_refs_org_code_uq: 'External invoice reference code already exists',
+  external_invoice_refs_org_external_uq: 'External invoice number already exists for this source',
+  bukku_sync_records_org_entity_uq: 'Sync record already exists for this entity',
+  bukku_sync_records_idempotency_uq: 'Duplicate sync request (idempotency key)',
+  /* Sprint 4 P1 remediation (migration 0010) — commission duplicate guard */
+  commission_ledger_org_doctor_period_uq: 'Commission already calculated for this doctor and period',
 };
 
 /**

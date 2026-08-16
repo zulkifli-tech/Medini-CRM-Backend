@@ -45,12 +45,28 @@ const FINANCE_TABLES = [
 ];
 
 describe('S4-T1 Finance Foundation (live PG)', () => {
-  dbIt('migration 0009 tracked in drizzle.__drizzle_migrations', async () => {
+  dbIt('migration state tracked: drizzle journal >= 9 OR manual-apply evidence (index 0010)', async () => {
     const db = createDatabase(URL);
-    const r = (await db.execute(
-      sql`SELECT COUNT(*)::int AS c FROM drizzle.__drizzle_migrations`,
+    /* Drizzle-kit environments populate drizzle.__drizzle_migrations; CI applies
+     * migrations manually via psql (by design — "surfaces real errors"), so the
+     * tracking table does not exist there. Both environments must prove the
+     * migration state is complete: journal count >= 9, or (manual apply) the
+     * 0010 P1-remediation unique index is present — the latest-migration proof. */
+    const probe = (await db.execute(
+      sql`SELECT to_regclass('drizzle.__drizzle_migrations') IS NOT NULL AS has_journal`,
     )) as unknown as RawRows;
-    expect(Number(r.rows[0]!.c)).toBeGreaterThanOrEqual(9);
+    const hasJournal = probe.rows[0]!.has_journal === true;
+    if (hasJournal) {
+      const r = (await db.execute(
+        sql`SELECT COUNT(*)::int AS c FROM drizzle.__drizzle_migrations`,
+      )) as unknown as RawRows;
+      expect(Number(r.rows[0]!.c)).toBeGreaterThanOrEqual(9);
+    } else {
+      const idx = (await db.execute(
+        sql`SELECT COUNT(*)::int AS c FROM pg_indexes WHERE indexname = 'commission_ledger_org_doctor_period_uq'`,
+      )) as unknown as RawRows;
+      expect(Number(idx.rows[0]!.c)).toBe(1);
+    }
     await closeDatabase();
   });
 

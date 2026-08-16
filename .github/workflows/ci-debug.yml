@@ -9,6 +9,12 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://medini:***@localhost:5432/medini_dev
+      DATABASE_RUNTIME_URL: postgres://medini_app:***@localhost:5432/medini_dev
+      JWT_SECRET: ci_only_insecure_jwt_secret_for_tests_0123456789
+      JWT_REFRESH_SECRET: ci_only_insecure_refresh_secret_for_tests_0123456789
     services:
       postgres:
         image: postgres:16-alpine
@@ -47,25 +53,8 @@ jobs:
           PGPASSWORD=medini_dev_password psql -h localhost -U medini -d medini_dev -c "SELECT proname FROM pg_proc WHERE proname IN ('app_role','app_branch_ids');"
           PGPASSWORD=medini_dev_password psql -h localhost -U medini -d medini_dev -c "SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY 1;"
       - name: Seed with full error diagnostics (exact seed.js path)
-        env:
-          NODE_ENV: test
-          DATABASE_URL: postgres://medini:medini_dev_password@localhost:5432/medini_dev
-          DATABASE_RUNTIME_URL: postgres://medini_app:medini_app_password@localhost:5432/medini_dev
-          JWT_SECRET: ci_only_insecure_jwt_secret_for_tests_0123456789
-          JWT_REFRESH_SECRET: ci_only_insecure_refresh_secret_for_tests_0123456789
         run: |
-          echo "=== V3: seed IMMEDIATELY (fresh node process, psql quiesced) ==="
-          node dist/infrastructure/database/seed.js && echo "V3 PASS"
-          echo "=== V4: seed AGAIN immediately (second fresh process) ==="
-          node dist/infrastructure/database/seed.js && echo "V4 PASS"
-          echo "=== V5: diagnostics on any failure ==="
-          node -e "
-          const { createDatabase } = require('./dist/infrastructure/database/database.js');
-          const { sql } = require('drizzle-orm');
-          (async () => {
-            const db = createDatabase(process.env.DATABASE_URL);
-            await db.execute(sql\`SELECT set_config('app.role', 'hq', false)\`);
-            console.log('V5 set_config OK');
-            process.exit(0);
-          })().catch(e => { console.log('V5 FAIL', e.message, e.cause && e.cause.code); process.exit(1); });
-          "
+          echo "=== V6: EXACT backend-ci invocation (job-level env inherited) ==="
+          echo "DATABASE_URL length: ${#DATABASE_URL}"
+          echo "DATABASE_URL prefix: $(echo $DATABASE_URL | cut -c1-25)"
+          node dist/infrastructure/database/seed.js && echo "V6 PASS"

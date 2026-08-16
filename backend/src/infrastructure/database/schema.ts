@@ -697,6 +697,11 @@ export const financeAlertSeverityEnum = pgEnum('finance_alert_severity', ['criti
 export const financeAlertStatusEnum = pgEnum('finance_alert_status', ['open', 'acknowledged', 'resolved', 'dismissed']);
 export const syncStatusEnum = pgEnum('sync_status', ['pending', 'queued', 'syncing', 'synced', 'error', 'conflict']);
 export const reconciliationStatusEnum = pgEnum('reconciliation_status', ['pending', 'matched', 'conflict', 'resolved']);
+/* Sprint 5 T1 — Marketing is operational intent and case management only. */
+export const leadStatusEnum = pgEnum('lead_status', ['new', 'contacted', 'qualified', 'converted', 'lost']);
+export const campaignStatusEnum = pgEnum('campaign_status', ['draft', 'pending_approval', 'approved', 'cancelled', 'archived']);
+export const recallStatusEnum = pgEnum('recall_status', ['open', 'completed', 'cancelled']);
+export const followUpStatusEnum = pgEnum('follow_up_status', ['open', 'completed', 'cancelled']);
 
 /* 28. SALE_RECORDS — revenue analytics (POS reference, CRM=record). */
 export const saleRecords = pgTable('sale_records', {
@@ -984,6 +989,81 @@ export const reconciliationRecords = pgTable('reconciliation_records', {
 ]);
 
 /* ---------- Type exports ---------- */
+/* ============================================================================
+   SPRINT 5 T1 — MARKETING FOUNDATION
+   ==========================================================================*/
+export const leads = pgTable('leads', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  name: varchar('name', { length: 256 }).notNull(),
+  phone: varchar('phone', { length: 64 }),
+  source: varchar('source', { length: 64 }).notNull(),
+  interestedTreatment: varchar('interested_treatment', { length: 256 }),
+  status: leadStatusEnum('status').notNull().default('new'),
+  assigneeId: uuid('assignee_id').references(() => staff.id, { onDelete: 'restrict' }),
+  patientId: uuid('patient_id').references(() => patients.id, { onDelete: 'restrict' }),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [index('leads_branch_status_idx').on(t.branchId, t.status), index('leads_org_source_idx').on(t.orgId, t.source)]);
+
+export const campaigns = pgTable('campaigns', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  name: varchar('name', { length: 256 }).notNull(),
+  intent: varchar('intent', { length: 512 }).notNull(),
+  audienceDefinition: jsonb('audience_definition').notNull(),
+  templateReference: varchar('template_reference', { length: 256 }),
+  status: campaignStatusEnum('status').notNull().default('draft'),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  approvedBy: uuid('approved_by').references(() => staff.id, { onDelete: 'restrict' }),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [index('campaigns_branch_status_idx').on(t.branchId, t.status)]);
+
+export const recallRules = pgTable('recall_rules', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  name: varchar('name', { length: 256 }).notNull(),
+  treatmentCode: varchar('treatment_code', { length: 64 }),
+  intervalMonths: integer('interval_months').notNull(),
+  active: boolean('active').notNull().default(true),
+  effectiveFrom: date('effective_from').notNull(),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [index('recall_rules_branch_active_idx').on(t.branchId, t.active), check('recall_rules_interval_positive', sql.raw('interval_months > 0'))]);
+
+export const recallCases = pgTable('recall_cases', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  patientId: uuid('patient_id').notNull().references(() => patients.id, { onDelete: 'restrict' }),
+  recallRuleId: uuid('recall_rule_id').references(() => recallRules.id, { onDelete: 'restrict' }),
+  dueDate: date('due_date').notNull(),
+  status: recallStatusEnum('status').notNull().default('open'),
+  assigneeId: uuid('assignee_id').references(() => staff.id, { onDelete: 'restrict' }),
+  outcome: varchar('outcome', { length: 512 }),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [index('recall_cases_branch_status_due_idx').on(t.branchId, t.status, t.dueDate), index('recall_cases_patient_idx').on(t.patientId)]);
+
+export const followUpCases = pgTable('follow_up_cases', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  patientId: uuid('patient_id').notNull().references(() => patients.id, { onDelete: 'restrict' }),
+  appointmentId: uuid('appointment_id').references(() => appointments.id, { onDelete: 'restrict' }),
+  encounterId: uuid('encounter_id').references(() => encounters.id, { onDelete: 'restrict' }),
+  assigneeId: uuid('assignee_id').references(() => staff.id, { onDelete: 'restrict' }),
+  dueDate: date('due_date').notNull(),
+  status: followUpStatusEnum('status').notNull().default('open'),
+  outcome: varchar('outcome', { length: 512 }),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [index('follow_up_cases_branch_status_due_idx').on(t.branchId, t.status, t.dueDate), index('follow_up_cases_patient_idx').on(t.patientId)]);
+
 export type Branch = typeof branches.$inferSelect;
 export type Staff = typeof staff.$inferSelect;
 export type RoleAssignment = typeof roleAssignments.$inferSelect;
@@ -1025,3 +1105,8 @@ export type FinanceAlert = typeof financeAlerts.$inferSelect;
 export type ExternalInvoiceRef = typeof externalInvoiceRefs.$inferSelect;
 export type BukkuSyncRecord = typeof bukkuSyncRecords.$inferSelect;
 export type ReconciliationRecord = typeof reconciliationRecords.$inferSelect;
+export type Lead = typeof leads.$inferSelect;
+export type Campaign = typeof campaigns.$inferSelect;
+export type RecallRule = typeof recallRules.$inferSelect;
+export type RecallCase = typeof recallCases.$inferSelect;
+export type FollowUpCase = typeof followUpCases.$inferSelect;

@@ -19,6 +19,11 @@ const UNIQUE_CONSTRAINT_MESSAGES: Record<string, string> = {
   patients_org_mrn_uq: 'MRN already exists',
   patients_org_ic_uq: 'IC already registered',
   appt_org_code_uq: 'Appointment code already exists',
+  /* Sprint 2A T2 — payor master data (migration 0006 constraints) */
+  panel_companies_org_code_uq: 'Panel code already exists',
+  panel_companies_org_name_uq: 'Panel name already exists',
+  insurance_companies_org_code_uq: 'Insurance code already exists',
+  insurance_companies_org_name_uq: 'Insurance name already exists',
 };
 
 /**

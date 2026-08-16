@@ -33,6 +33,8 @@ export const appointmentStatusEnum = pgEnum('appointment_status', [
 ]);
 export const auditSourceEnum = pgEnum('audit_source', ['api', 'worker', 'integration', 'system']);
 export const idempotencyStatusEnum = pgEnum('idempotency_status', ['in_progress', 'completed', 'failed']);
+/* Sprint 2A T1 — shared by panel_companies + insurance_companies (org-wide payor master data). */
+export const payorStatusEnum = pgEnum('payor_status', ['Active', 'Inactive']);
 
 /* ---------- shared audit column helpers ---------- */
 const auditCols = {
@@ -255,6 +257,53 @@ export const auditLog = pgTable('audit_log', {
 /* NOTE: audit_log has NO updated_at / deleted_at — append-only by design. */
 
 /* ============================================================================
+   12. PANEL_COMPANIES — org-wide payor master data (Sprint 2A T1).
+   NO branch_id by design: payer references are reusable across branches.
+   NO invoice/payment/revenue/outstanding/bukku columns (ADR-004).
+   RLS (0006): read = hq/branch_manager; write = hq only.
+   ==========================================================================*/
+export const panelCompanies = pgTable('panel_companies', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  code: varchar('code', { length: 32 }).notNull(),              /* PNL-#### (allocator: 2A-T2) */
+  name: varchar('name', { length: 256 }).notNull(),
+  pic: varchar('pic', { length: 256 }),
+  phone: varchar('phone', { length: 64 }),
+  address: text('address'),
+  status: payorStatusEnum('status').notNull().default('Active'),
+  source: varchar('source', { length: 16 }).notNull().default('custom'), /* custom|builtin|seed */
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('panel_companies_org_code_uq').on(t.orgId, t.code),
+  index('panel_companies_org_status_idx').on(t.orgId, t.status),
+  /* case-insensitive name uniqueness per org = partial functional index
+     (org_id, lower(name)) WHERE deleted_at IS NULL — SQL in 0006 migration
+     (same convention as nullable patients_org_ic_uq: live rows only). */
+]);
+
+/* ============================================================================
+   13. INSURANCE_COMPANIES — org-wide insurance master data (initially empty).
+   Same conventions as panel_companies.
+   ==========================================================================*/
+export const insuranceCompanies = pgTable('insurance_companies', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  code: varchar('code', { length: 32 }).notNull(),              /* INS-#### (allocator: 2A-T2) */
+  name: varchar('name', { length: 256 }).notNull(),
+  pic: varchar('pic', { length: 256 }),
+  phone: varchar('phone', { length: 64 }),
+  address: text('address'),
+  status: payorStatusEnum('status').notNull().default('Active'),
+  source: varchar('source', { length: 16 }).notNull().default('custom'),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('insurance_companies_org_code_uq').on(t.orgId, t.code),
+  index('insurance_companies_org_status_idx').on(t.orgId, t.status),
+]);
+
+/* ============================================================================
    9. DOMAIN_EVENTS — transactional outbox.
    ==========================================================================*/
 export const domainEvents = pgTable('domain_events', {
@@ -313,3 +362,5 @@ export type AuditLog = typeof auditLog.$inferSelect;
 export type DomainEvent = typeof domainEvents.$inferSelect;
 export type ProcessedEvent = typeof processedEvents.$inferSelect;
 export type IdempotencyKey = typeof idempotencyKeys.$inferSelect;
+export type PanelCompany = typeof panelCompanies.$inferSelect;
+export type InsuranceCompany = typeof insuranceCompanies.$inferSelect;

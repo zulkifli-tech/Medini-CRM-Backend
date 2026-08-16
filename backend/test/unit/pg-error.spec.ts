@@ -27,6 +27,30 @@ describe('toDomainError — structured PG error mapping (GLM #7)', () => {
     expect((out as ConflictError).message).toBe('Appointment code already exists');
   });
 
+  /* Sprint 2A T2 — payor constraint mappings */
+  it('maps panel_companies_org_name_uq → 409 "Panel name already exists"', () => {
+    const out = toDomainError(wrapped('23505', 'panel_companies_org_name_uq'));
+    expect(out).toBeInstanceOf(ConflictError);
+    expect((out as ConflictError).message).toBe('Panel name already exists');
+    expect((out as ConflictError).statusCode).toBe(409);
+  });
+
+  it('maps panel_companies_org_code_uq → 409 "Panel code already exists"', () => {
+    const out = toDomainError(wrapped('23505', 'panel_companies_org_code_uq'));
+    expect((out as ConflictError).message).toBe('Panel code already exists');
+  });
+
+  it('maps insurance_companies_org_name_uq → 409 "Insurance name already exists"', () => {
+    const out = toDomainError(wrapped('23505', 'insurance_companies_org_name_uq'));
+    expect(out).toBeInstanceOf(ConflictError);
+    expect((out as ConflictError).message).toBe('Insurance name already exists');
+  });
+
+  it('maps insurance_companies_org_code_uq → 409 "Insurance code already exists"', () => {
+    const out = toDomainError(wrapped('23505', 'insurance_companies_org_code_uq'));
+    expect((out as ConflictError).message).toBe('Insurance code already exists');
+  });
+
   it('maps unknown unique violation → generic 409', () => {
     const out = toDomainError(wrapped('23505', 'some_other_uq'));
     expect(out).toBeInstanceOf(ConflictError);

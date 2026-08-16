@@ -6,10 +6,11 @@
  */
 import { createDatabase } from './database';
 import { sql } from 'drizzle-orm';
-import { branches, staff, roleAssignments } from './schema';
+import { branches, staff, roleAssignments, panelCompanies } from './schema';
 import * as argon2 from 'argon2';
 
 const ORG_ID = '00000000-0000-0000-0000-000000000001'; /* single org: medini-dental-group */
+const ORG_KEY = ORG_ID.replace(/-/g, '').slice(-8).toLowerCase(); /* '00000001' — allocator seq suffix */
 
 /**
  * DEV-ONLY demo credential (Part 2/23). This seeds an Argon2id HASH, never
@@ -45,7 +46,7 @@ const DEMO_USERS = [
   { username: 'doctor', name: 'Dr. Aina Rahman', role: 'doctor' as const, branchCode: 'gelang-patah', doctorRef: 'dr-aina' },
 ];
 
-export async function seed(connectionString: string): Promise<{ branches: number; staff: number }> {
+export async function seed(connectionString: string): Promise<{ branches: number; staff: number; panels: number }> {
   const db = createDatabase(connectionString);
 
   /* FORCE RLS: scoped reads below require an app context. Seeding is an
@@ -96,13 +97,38 @@ export async function seed(connectionString: string): Promise<{ branches: number
   }
 
   const staffCount = await db.select().from(staff);
-  return { branches: allBranches.length, staff: staffCount.length };
+
+  /* ------------------------------------------------------------------
+   * Sprint 2A T4 — canonical Panel master data (3 seeded panels).
+   * Idempotent via ON CONFLICT (org_id, lower(name)) partial unique index
+   * from migration 0006: rerun does NOT duplicate and does NOT overwrite
+   * user-edited fields (DO NOTHING). Codes allocated through the org
+   * sequence — NEVER renumbered for existing rows (deterministic on a
+   * clean DB: PNL-0001/0002/0003 in seed order).
+   * ----------------------------------------------------------------*/
+  const SEED_PANELS = ['AIA PANEL', 'MEDNEFITS', 'PMCARE'] as const;
+  for (const name of SEED_PANELS) {
+    const codeRows = await db.execute(
+      sql`SELECT nextval(${sql.raw(`'medini_pnl_${ORG_KEY}'`)})::int AS n`,
+    );
+    const n = (codeRows as unknown as { rows: Array<{ n: number }> }).rows[0]!.n;
+    const code = `PNL-${String(n).padStart(4, '0')}`;
+    await db.insert(panelCompanies).values({
+      orgId: ORG_ID, code, name, status: 'Active', source: 'seed',
+    }).onConflictDoNothing();
+  }
+  const panelRows = await db.execute(
+    sql`SELECT count(*)::int AS n FROM panel_companies WHERE org_id = ${ORG_ID} AND deleted_at IS NULL`,
+  );
+  const panelCount = (panelRows as unknown as { rows: Array<{ n: number }> }).rows[0]!.n;
+
+  return { branches: allBranches.length, staff: staffCount.length, panels: panelCount };
 }
 
 /* CLI: node dist/infrastructure/database/seed.js */
 if (require.main === module) {
   const url = process.env.DATABASE_URL ?? 'postgres://medini:medini_dev_password@localhost:5433/medini_dev';
   seed(url)
-    .then((r) => { console.log(`Seed complete: ${r.branches} branches, ${r.staff} staff`); process.exit(0); })
+    .then((r) => { console.log(`Seed complete: ${r.branches} branches, ${r.staff} staff, ${r.panels} panels`); process.exit(0); })
     .catch((e) => { console.error('Seed failed:', e.message); process.exit(1); });
 }

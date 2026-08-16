@@ -51,7 +51,7 @@ jobs:
       - name: Migrate (clean PG16 — manual psql apply, surfaces real errors)
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
-          for f in drizzle/0000_schema_foundation.sql drizzle/0002_rls_foundation.sql drizzle/0003_rls_hardening.sql drizzle/0004_patient_timeline.sql drizzle/0005_org_sequences.sql; do
+          for f in drizzle/0000_schema_foundation.sql drizzle/0002_rls_foundation.sql drizzle/0003_rls_hardening.sql drizzle/0004_patient_timeline.sql drizzle/0005_org_sequences.sql drizzle/0006_payor_master_data.sql; do
             echo "--- applying $f ---"
             sed 's/--> statement-breakpoint//g' "$f" | PGPASSWORD=medini_dev_password psql -h localhost -U medini -d medini_dev -v ON_ERROR_STOP=1 -q
           done

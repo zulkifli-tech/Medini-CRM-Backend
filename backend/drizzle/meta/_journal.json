@@ -36,6 +36,13 @@
       "when": 1786860000000,
       "tag": "0005_org_sequences",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787000000000,
+      "tag": "0006_payor_master_data",
+      "breakpoints": true
     }
   ]
 }

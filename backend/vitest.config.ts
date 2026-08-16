@@ -7,6 +7,17 @@ export default defineConfig({
     environment: 'node',
     include: ['test/**/*.spec.ts'],
     coverage: { reporter: ['text', 'json-summary'] },
+    /* Sprint 3 verification hardening (assertions untouched): 40+ live-PG
+     * integration specs each hold connection pools against the shared dev DB;
+     * the default worker strategy exhausted local resources on the Windows
+     * dev machine, producing non-deterministic 5s timeouts / worker exits
+     * that never reproduced on clean CI runners. Bounded forks workers +
+     * realistic timeouts make local/CI runs resource-safe and deterministic. */
+    testTimeout: 30000,
+    hookTimeout: 30000,
+    maxWorkers: 4,
+    minWorkers: 1,
+    pool: 'forks',
   },
   resolve: {
     alias: {

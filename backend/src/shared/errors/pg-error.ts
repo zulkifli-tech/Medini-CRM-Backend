@@ -24,6 +24,14 @@ const UNIQUE_CONSTRAINT_MESSAGES: Record<string, string> = {
   panel_companies_org_name_uq: 'Panel name already exists',
   insurance_companies_org_code_uq: 'Insurance code already exists',
   insurance_companies_org_name_uq: 'Insurance name already exists',
+  /* Sprint 3 (S3-A) — clinical domain (migrations 0007/0008 constraints) */
+  encounters_org_code_uq: 'Encounter code already exists',
+  treatment_plans_org_code_uq: 'Treatment plan code already exists',
+  treatment_catalog_org_code_uq: 'Treatment code already exists',
+  treatment_catalog_org_name_uq: 'Treatment name already exists',
+  tooth_records_enc_tooth_uq: 'Tooth record already exists for this encounter',
+  treatment_sessions_plan_no_uq: 'Session number already exists for this plan',
+  consent_templates_title_version_uq: 'Consent template version already exists',
 };
 
 /**

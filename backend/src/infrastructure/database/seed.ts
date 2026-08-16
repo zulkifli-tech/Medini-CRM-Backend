@@ -6,7 +6,7 @@
  */
 import { createDatabase } from './database';
 import { sql } from 'drizzle-orm';
-import { branches, staff, roleAssignments, panelCompanies } from './schema';
+import { branches, staff, roleAssignments, panelCompanies, treatmentCatalog, consentTemplates } from './schema';
 import * as argon2 from 'argon2';
 
 const ORG_ID = '00000000-0000-0000-0000-000000000001'; /* single org: medini-dental-group */
@@ -46,7 +46,9 @@ const DEMO_USERS = [
   { username: 'doctor', name: 'Dr. Aina Rahman', role: 'doctor' as const, branchCode: 'gelang-patah', doctorRef: 'dr-aina' },
 ];
 
-export async function seed(connectionString: string): Promise<{ branches: number; staff: number; panels: number }> {
+export async function seed(connectionString: string): Promise<{
+  branches: number; staff: number; panels: number; treatments: number; consentTemplates: number;
+}> {
   const db = createDatabase(connectionString);
 
   /* FORCE RLS: scoped reads below require an app context. Seeding is an
@@ -122,13 +124,77 @@ export async function seed(connectionString: string): Promise<{ branches: number
   );
   const panelCount = (panelRows as unknown as { rows: Array<{ n: number }> }).rows[0]!.n;
 
-  return { branches: allBranches.length, staff: staffCount.length, panels: panelCount };
+  /* ------------------------------------------------------------------
+   * Sprint 3 — canonical clinical reference data.
+   * Treatment catalog: reference ONLY (code/name/category/duration).
+   * NO price — ADR-004 (Finance consumes treatment_id later). Codes come
+   * from the org sequence (medini_trt_*) — deterministic on a clean DB,
+   * never renumbered for existing rows (ON CONFLICT DO NOTHING).
+   * ----------------------------------------------------------------*/
+  const SEED_TREATMENTS: ReadonlyArray<{ name: string; category: string; durationMin: number }> = [
+    { name: 'Consultation & Examination', category: 'General', durationMin: 30 },
+    { name: 'Scaling & Polishing', category: 'Preventive', durationMin: 45 },
+    { name: 'Fluoride Treatment', category: 'Preventive', durationMin: 20 },
+    { name: 'Composite Filling', category: 'Restorative', durationMin: 45 },
+    { name: 'Amalgam Filling', category: 'Restorative', durationMin: 45 },
+    { name: 'Simple Extraction', category: 'Oral Surgery', durationMin: 30 },
+    { name: 'Surgical Extraction', category: 'Oral Surgery', durationMin: 60 },
+    { name: 'Root Canal Treatment (Single Visit)', category: 'Endodontic', durationMin: 90 },
+    { name: 'Crown (Porcelain Fused to Metal)', category: 'Prosthodontic', durationMin: 60 },
+    { name: 'Dental Bridge', category: 'Prosthodontic', durationMin: 60 },
+    { name: 'Teeth Whitening (In-Office)', category: 'Cosmetic', durationMin: 60 },
+    { name: 'Periapical X-Ray', category: 'Imaging', durationMin: 15 },
+  ];
+  for (const t of SEED_TREATMENTS) {
+    const codeRows = await db.execute(
+      sql`SELECT nextval(${sql.raw(`'medini_trt_${ORG_KEY}'`)})::int AS n`,
+    );
+    const n = (codeRows as unknown as { rows: Array<{ n: number }> }).rows[0]!.n;
+    const code = `TRT-${String(n).padStart(4, '0')}`;
+    await db.insert(treatmentCatalog).values({
+      orgId: ORG_ID, code, name: t.name, category: t.category, durationMin: t.durationMin,
+    }).onConflictDoNothing();
+  }
+  const treatmentRows = await db.execute(
+    sql`SELECT count(*)::int AS n FROM treatment_catalog WHERE org_id = ${ORG_ID} AND deleted_at IS NULL`,
+  );
+  const treatmentCount = (treatmentRows as unknown as { rows: Array<{ n: number }> }).rows[0]!.n;
+
+  /* Consent templates (v1) — org-wide, versioned reference content. */
+  const SEED_CONSENTS: ReadonlyArray<{ title: string; body: string }> = [
+    {
+      title: 'General Dental Treatment Consent',
+      body: 'I consent to the dental examination and treatment discussed with me, including local anaesthesia where required. The nature, purpose, benefits, and material risks of the proposed treatment have been explained to me, and I have had the opportunity to ask questions.',
+    },
+    {
+      title: 'Tooth Extraction Consent',
+      body: 'I consent to the extraction of the tooth/teeth identified by my dentist. I understand the risks including bleeding, infection, dry socket, and possible damage to adjacent teeth or structures, and that alternative options have been explained.',
+    },
+    {
+      title: 'Root Canal Treatment Consent',
+      body: 'I consent to root canal (endodontic) treatment. I understand the procedure may require multiple visits, that success cannot be guaranteed, and that complications such as instrument fracture, perforation, or persistent infection may require further treatment or extraction.',
+    },
+  ];
+  for (const c of SEED_CONSENTS) {
+    await db.insert(consentTemplates).values({
+      orgId: ORG_ID, title: c.title, body: c.body, version: 1, isActive: true,
+    }).onConflictDoNothing();
+  }
+  const consentRows = await db.execute(
+    sql`SELECT count(*)::int AS n FROM consent_templates WHERE org_id = ${ORG_ID}`,
+  );
+  const consentCount = (consentRows as unknown as { rows: Array<{ n: number }> }).rows[0]!.n;
+
+  return {
+    branches: allBranches.length, staff: staffCount.length, panels: panelCount,
+    treatments: treatmentCount, consentTemplates: consentCount,
+  };
 }
 
 /* CLI: node dist/infrastructure/database/seed.js */
 if (require.main === module) {
   const url = process.env.DATABASE_URL ?? 'postgres://medini:medini_dev_password@localhost:5433/medini_dev';
   seed(url)
-    .then((r) => { console.log(`Seed complete: ${r.branches} branches, ${r.staff} staff, ${r.panels} panels`); process.exit(0); })
+    .then((r) => { console.log(`Seed complete: ${r.branches} branches, ${r.staff} staff, ${r.panels} panels, ${r.treatments} treatments, ${r.consentTemplates} consent templates`); process.exit(0); })
     .catch((e) => { console.error('Seed failed:', e.message); process.exit(1); });
 }

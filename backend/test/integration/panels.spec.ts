@@ -315,9 +315,12 @@ describe('Sprint 2A T3 — Panel master data (live PG)', () => {
           WHERE org_id = ${TEST_ORG} AND entity = 'panel_companies' ORDER BY created_at`,
     );
     const list = (rows as unknown as { rows: Array<{ action: string; b: string; a: string }> }).rows;
-    expect(list.map((r) => r.action)).toEqual(['panel_created', 'panel_updated']);
-    expect(list[1]!.b).toContain('Before');
-    expect(list[1]!.a).toContain('After');
+    /* filter to THIS panel's rows — other suites may append audit rows to the
+     * shared org concurrently (cross-suite isolation on the shared dev DB) */
+    const mine = list.filter((r) => (r.a ?? '').includes('Audit Panel'));
+    expect(mine.map((r) => r.action)).toEqual(['panel_created', 'panel_updated']);
+    expect(mine[1]!.b).toContain('Before');
+    expect(mine[1]!.a).toContain('After');
     await purge(admin.db);
     await admin.close();
     await close();

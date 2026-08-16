@@ -13,6 +13,7 @@ import { PatientsModule } from './modules/patients/patients.module';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { PayorsModule } from './modules/payors/payors.module';
+import { ClinicalModule } from './modules/clinical/clinical.module';
 import { RootController } from './root.controller';
 
 /**
@@ -33,6 +34,7 @@ import { RootController } from './root.controller';
     AppointmentsModule,
     DashboardModule,
     PayorsModule,
+    ClinicalModule,
   ],
   controllers: [RootController],
   providers: [

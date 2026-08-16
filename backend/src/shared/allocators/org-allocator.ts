@@ -16,7 +16,7 @@ import { DbClient } from '../../modules/patients/infrastructure/patients.reposit
 export class OrgAllocator {
   constructor(private readonly tx: DbClient) {}
 
-  private seqName(prefix: 'mrn' | 'apt' | 'pnl' | 'ins', orgId: string): string {
+  private seqName(prefix: 'mrn' | 'apt' | 'pnl' | 'ins' | 'enc' | 'tpl' | 'trt', orgId: string): string {
     const key = orgId.replace(/-/g, '').slice(-8).toLowerCase();
     return `medini_${prefix}_${key}`;
   }
@@ -59,5 +59,36 @@ export class OrgAllocator {
     );
     const n = (rows as unknown as { rows: Array<{ n: number }> }).rows[0]!.n;
     return `INS-${String(n).padStart(4, '0')}`;
+  }
+
+  /* Sprint 3 (S3-A) — clinical codes share the identical org-safe,
+   * concurrency-safe sequence mechanism (sequences pre-created by migration
+   * 0007, admin path). MRN/APT/PNL/INS behaviour above is unchanged. */
+
+  /** Next encounter code for the org, e.g. ENC-0001. */
+  async nextEncounterCode(orgId: string): Promise<string> {
+    const rows = await this.tx.execute(
+      sql`SELECT nextval(${sql.raw(`'${this.seqName('enc', orgId)}'`)})::int AS n`,
+    );
+    const n = (rows as unknown as { rows: Array<{ n: number }> }).rows[0]!.n;
+    return `ENC-${String(n).padStart(4, '0')}`;
+  }
+
+  /** Next treatment plan code for the org, e.g. TPL-0001. */
+  async nextPlanCode(orgId: string): Promise<string> {
+    const rows = await this.tx.execute(
+      sql`SELECT nextval(${sql.raw(`'${this.seqName('tpl', orgId)}'`)})::int AS n`,
+    );
+    const n = (rows as unknown as { rows: Array<{ n: number }> }).rows[0]!.n;
+    return `TPL-${String(n).padStart(4, '0')}`;
+  }
+
+  /** Next treatment catalog code for the org, e.g. TRT-0001. */
+  async nextTreatmentCode(orgId: string): Promise<string> {
+    const rows = await this.tx.execute(
+      sql`SELECT nextval(${sql.raw(`'${this.seqName('trt', orgId)}'`)})::int AS n`,
+    );
+    const n = (rows as unknown as { rows: Array<{ n: number }> }).rows[0]!.n;
+    return `TRT-${String(n).padStart(4, '0')}`;
   }
 }

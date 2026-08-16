@@ -54,19 +54,30 @@ jobs:
           JWT_SECRET: ci_only_insecure_jwt_secret_for_tests_0123456789
           JWT_REFRESH_SECRET: ci_only_insecure_refresh_secret_for_tests_0123456789
         run: |
+          echo "=== variant 1: node -e require+seed (debug-style) ==="
           node -e "
           const { seed } = require('./dist/infrastructure/database/seed.js');
-          seed(process.env.DATABASE_URL)
-            .then((r) => { console.log('SEED OK', JSON.stringify(r)); })
-            .catch((e) => {
-              console.log('SEED FAIL message:', e.message);
-              console.log('SEED FAIL code:', e.code);
-              console.log('SEED FAIL cause.code:', e.cause && e.cause.code);
-              console.log('SEED FAIL cause.severity:', e.cause && e.cause.severity);
-              console.log('SEED FAIL cause.routine:', e.cause && e.cause.routine);
-              console.log('SEED FAIL cause.message:', e.cause && e.cause.message);
-              console.log('SEED FAIL cause.detail:', e.cause && e.cause.detail);
-              console.log('SEED FAIL stack:', e.stack);
-              process.exit(1);
-            });
+          seed(process.env.DATABASE_URL).then((r) => console.log('V1 OK', JSON.stringify(r)))
+            .catch((e) => { console.log('V1 FAIL:', e.message, '| cause:', e.cause && e.cause.code, e.cause && e.cause.message); process.exit(1); });
           "
+          echo "=== variant 2: direct CLI (ci.yml-style) ==="
+          node dist/infrastructure/database/seed.js || {
+            echo "V2 FAILED — repeating with diagnostics"
+            node -e "
+            const { createDatabase } = require('./dist/infrastructure/database/database.js');
+            const { sql } = require('drizzle-orm');
+            (async () => {
+              try {
+                const db = createDatabase(process.env.DATABASE_URL);
+                await db.execute(sql\`SELECT 1\`);
+                console.log('V2-diag SELECT 1: OK');
+                await db.execute(sql\`SELECT set_config('app.role', 'hq', false)\`);
+                console.log('V2-diag set_config: OK');
+              } catch (e) {
+                console.log('V2-diag FAIL:', e.message, '| code:', e.code, '| cause:', e.cause && e.cause.code, e.cause && e.cause.message, e.cause && e.cause.routine);
+              }
+              process.exit(0);
+            })();
+            "
+            exit 1
+          }

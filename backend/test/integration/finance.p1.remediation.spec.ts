@@ -41,7 +41,10 @@ function dbIt(name: string, fn: () => Promise<void>): void {
   });
 }
 
-const TEST_ORG = '99999999-9999-9999-9999-9999999999d1';
+/* Unique throwaway org per suite (convention: never share org UUIDs across
+ * spec files — CI runs files in parallel and a purge in one suite would race
+ * with another suite's assertions on the same org). */
+const TEST_ORG = '99999999-9999-9999-9999-999999abc001';
 const STAFF = '00000000-0000-0000-0000-0000000000aa';
 const DOCTOR = '00000000-0000-0000-0000-0000000000dd';
 

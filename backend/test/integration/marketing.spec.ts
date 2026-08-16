@@ -5,9 +5,11 @@ import { DbContextService } from '@core/auth/db-context.service';
 import { AuditService, InMemoryAuditAdapter } from '@shared/audit/audit.service';
 import { IdempotencyService, InMemoryIdempotencyAdapter } from '@shared/idempotency/idempotency.service';
 import { PatientsReadPort } from '@shared/ports/patients.read-port';
+import { AppointmentsReadPort } from '@shared/ports/appointments.read-port';
+import { ClinicalReadPort } from '@shared/ports/clinical.read-port';
 import { MarketingRepository } from '@modules/marketing/infrastructure/marketing.repository';
 import { MarketingService } from '@modules/marketing/application/marketing.service';
-import { ForbiddenError, ConflictError } from '@shared/errors/errors';
+import { ForbiddenError, ConflictError, ValidationError } from '@shared/errors/errors';
 
 const ADMIN_URL = process.env.DATABASE_URL ?? 'postgres://medini:medini_dev_password@localhost:5433/medini_dev';
 const RUNTIME_URL = process.env.DATABASE_RUNTIME_URL ?? process.env.DATABASE_URL ?? 'postgres://medini_app:medini_app_password@localhost:5433/medini_dev';
@@ -23,7 +25,7 @@ const doc = (branchId: string) => ({ staffId: '00000000-0000-0000-0000-000000000
 
 function build(db: ReturnType<typeof createFreshDatabase>['db'], audit: InMemoryAuditAdapter, idem: InMemoryIdempotencyAdapter) {
   const ctx = new DbContextService(db);
-  return new MarketingService(ctx, new MarketingRepository(), new PatientsReadPort(db), new AuditService(audit), new IdempotencyService(idem));
+  return new MarketingService(ctx, new MarketingRepository(), new PatientsReadPort(db), new AppointmentsReadPort(db), new ClinicalReadPort(db), new AuditService(audit), new IdempotencyService(idem));
 }
 async function purge(admin: ReturnType<typeof createFreshDatabase>['db']) {
   for (const t of ['follow_up_cases','recall_cases','recall_rules','campaigns','leads','patients','staff']) {
@@ -110,6 +112,21 @@ describe('S5-T1 Marketing — live RLS/RBAC/audit/idempotency (unique org per su
     const actions = audit.events.map(e => e.action);
     expect(actions).toContain('marketing_lead_created');
     expect(actions).toContain('marketing_lead_contacted');
+    await purge(admin.db); await admin.close(); await close();
+  });
+
+  dbIt('T4: follow-up with mismatched appointment/encounter ownership is rejected', async () => {
+    const admin = createFreshDatabase(ADMIN_URL); await purge(admin.db);
+    const s = await seed(admin.db);
+    const audit = new InMemoryAuditAdapter(); const idem = new InMemoryIdempotencyAdapter();
+    const { db, close } = createFreshDatabase(RUNTIME_URL); const svc = build(db, audit, idem);
+    // unknown appointment reference
+    await expect(svc.createFollowUp(hq, { branchId: s.b1, patientId: s.p1, appointmentId: '00000000-0000-0000-0000-000000000000', dueDate: '2026-10-10' })).rejects.toThrow(ValidationError);
+    // unknown encounter reference
+    await expect(svc.createFollowUp(hq, { branchId: s.b1, patientId: s.p1, encounterId: '00000000-0000-0000-0000-000000000000', dueDate: '2026-10-10' })).rejects.toThrow(ValidationError);
+    // plain valid follow-up (no references) still works
+    const fu = await svc.createFollowUp(hq, { branchId: s.b1, patientId: s.p1, dueDate: '2026-10-10' });
+    expect(fu.status).toBe('open');
     await purge(admin.db); await admin.close(); await close();
   });
 

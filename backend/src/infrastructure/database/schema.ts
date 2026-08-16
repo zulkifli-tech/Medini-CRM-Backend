@@ -702,6 +702,15 @@ export const leadStatusEnum = pgEnum('lead_status', ['new', 'contacted', 'qualif
 export const campaignStatusEnum = pgEnum('campaign_status', ['draft', 'pending_approval', 'approved', 'cancelled', 'archived']);
 export const recallStatusEnum = pgEnum('recall_status', ['open', 'completed', 'cancelled']);
 export const followUpStatusEnum = pgEnum('follow_up_status', ['open', 'completed', 'cancelled']);
+/* Sprint 5 T2 — Operations: operational workflow records only. */
+export const doctorStatusStateEnum = pgEnum('doctor_status_state', ['available', 'busy', 'break', 'offline']);
+export const checklistStateEnum = pgEnum('checklist_state', ['open', 'in_progress', 'completed', 'cancelled']);
+export const taskStateEnum = pgEnum('task_state', ['open', 'in_progress', 'completed', 'cancelled']);
+export const incidentStateEnum = pgEnum('incident_state', ['open', 'acknowledged', 'resolved', 'closed']);
+export const incidentSeverityEnum = pgEnum('incident_severity', ['critical', 'high', 'medium', 'low']);
+export const taskPriorityEnum = pgEnum('task_priority', ['urgent', 'high', 'normal', 'low']);
+/* Sprint 5 T3 — Operations-owned lab coordination case (Finance owns payable). */
+export const labCaseStateEnum = pgEnum('lab_case_state', ['open', 'in_progress', 'ready_for_billing', 'billing_submitted', 'completed', 'cancelled']);
 
 /* 28. SALE_RECORDS — revenue analytics (POS reference, CRM=record). */
 export const saleRecords = pgTable('sale_records', {
@@ -988,6 +997,85 @@ export const reconciliationRecords = pgTable('reconciliation_records', {
   index('reconciliation_records_sync_idx').on(t.bukkuSyncRecordId),
 ]);
 
+/* ============================================================================
+   SPRINT 5 T2 — OPERATIONS FOUNDATION
+   ==========================================================================*/
+export const doctorStatuses = pgTable('doctor_statuses', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  doctorId: uuid('doctor_id').notNull().references(() => staff.id, { onDelete: 'restrict' }),
+  status: doctorStatusStateEnum('status').notNull(),
+  effectiveAt: timestamp('effective_at', { withTimezone: true }).notNull().defaultNow(),
+  note: varchar('note', { length: 256 }),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [index('doctor_statuses_branch_idx').on(t.branchId), index('doctor_statuses_doctor_effective_idx').on(t.doctorId, t.effectiveAt)]);
+
+export const checklists = pgTable('checklists', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  checklistDate: date('checklist_date').notNull(),
+  shift: varchar('shift', { length: 32 }),
+  title: varchar('title', { length: 256 }).notNull(),
+  items: jsonb('items').notNull(),
+  ownerId: uuid('owner_id').references(() => staff.id, { onDelete: 'restrict' }),
+  status: checklistStateEnum('status').notNull().default('open'),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [index('checklists_branch_date_idx').on(t.branchId, t.checklistDate), index('checklists_branch_status_idx').on(t.branchId, t.status)]);
+
+export const tasks = pgTable('tasks', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  title: varchar('title', { length: 256 }).notNull(),
+  description: varchar('description', { length: 1024 }),
+  priority: taskPriorityEnum('priority').notNull().default('normal'),
+  assigneeId: uuid('assignee_id').references(() => staff.id, { onDelete: 'restrict' }),
+  dueDate: date('due_date'),
+  status: taskStateEnum('status').notNull().default('open'),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [index('tasks_branch_status_idx').on(t.branchId, t.status), index('tasks_assignee_idx').on(t.assigneeId), index('tasks_due_date_idx').on(t.dueDate)]);
+
+export const incidents = pgTable('incidents', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  title: varchar('title', { length: 256 }).notNull(),
+  description: varchar('description', { length: 2048 }),
+  severity: incidentSeverityEnum('severity').notNull(),
+  ownerId: uuid('owner_id').references(() => staff.id, { onDelete: 'restrict' }),
+  status: incidentStateEnum('status').notNull().default('open'),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  closedAt: timestamp('closed_at', { withTimezone: true }),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [index('incidents_branch_status_idx').on(t.branchId, t.status), index('incidents_branch_severity_idx').on(t.branchId, t.severity)]);
+
+/* ============================================================================
+   SPRINT 5 T3 — LABCASE (Operations-owned; Finance owns lab_payables)
+   ==========================================================================*/
+export const labCases = pgTable('lab_cases', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  patientId: uuid('patient_id').notNull().references(() => patients.id, { onDelete: 'restrict' }),
+  encounterId: uuid('encounter_id').references(() => encounters.id, { onDelete: 'restrict' }),
+  labVendor: varchar('lab_vendor', { length: 256 }).notNull(),
+  workDescription: varchar('work_description', { length: 512 }).notNull(),
+  dueDate: date('due_date'),
+  status: labCaseStateEnum('status').notNull().default('open'),
+  billingSubmittedAt: timestamp('billing_submitted_at', { withTimezone: true }),
+  billingSubmittedBy: uuid('billing_submitted_by').references(() => staff.id, { onDelete: 'restrict' }),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [index('lab_cases_branch_status_idx').on(t.branchId, t.status), index('lab_cases_patient_idx').on(t.patientId)]);
+
 /* ---------- Type exports ---------- */
 /* ============================================================================
    SPRINT 5 T1 — MARKETING FOUNDATION
@@ -1110,3 +1198,8 @@ export type Campaign = typeof campaigns.$inferSelect;
 export type RecallRule = typeof recallRules.$inferSelect;
 export type RecallCase = typeof recallCases.$inferSelect;
 export type FollowUpCase = typeof followUpCases.$inferSelect;
+export type DoctorStatus = typeof doctorStatuses.$inferSelect;
+export type Checklist = typeof checklists.$inferSelect;
+export type Task = typeof tasks.$inferSelect;
+export type Incident = typeof incidents.$inferSelect;
+export type LabCase = typeof labCases.$inferSelect;

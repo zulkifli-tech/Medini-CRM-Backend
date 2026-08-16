@@ -6,6 +6,9 @@ on:
 jobs:
   debug:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     services:
       postgres:
         image: postgres:16-alpine
@@ -21,27 +24,49 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - name: Probe set_config via psql (pre-migration)
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install
+        run: npm ci || npm install
+      - name: Build
+        run: npm run build
+      - name: Migrate (exact ci.yml commands, VERBOSE to expose real PG error)
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
-          PGPASSWORD=medini_dev_password psql -h localhost -U medini -d medini_dev -c "SELECT set_config('app.role','hq',false);"
-          PGPASSWORD=medini_dev_password psql -h localhost -U medini -d medini_dev -c "SHOW server_version;"
-      - name: Probe set_config via pg driver (pre-migration)
+          for f in drizzle/0000_schema_foundation.sql drizzle/0002_rls_foundation.sql drizzle/0003_rls_hardening.sql drizzle/0004_patient_timeline.sql drizzle/0005_org_sequences.sql drizzle/0006_payor_master_data.sql; do
+            echo "--- applying $f ---"
+            sed 's/--> statement-breakpoint//g' "$f" | PGPASSWORD=medini_dev_password psql -h localhost -U medini -d medini_dev -v ON_ERROR_STOP=1 -a -e
+          done
+      - name: Post-migration DB state
         run: |
-          sudo apt-get install -y -qq nodejs npm
-          mkdir -p /tmp/probe && cd /tmp/probe && npm init -y >/dev/null 2>&1 && npm install pg@8 >/dev/null 2>&1
+          PGPASSWORD=medini_dev_password psql -h localhost -U medini -d medini_dev -c "SELECT rolname FROM pg_roles WHERE rolname IN ('medini','medini_app');"
+          PGPASSWORD=medini_dev_password psql -h localhost -U medini -d medini_dev -c "SELECT proname FROM pg_proc WHERE proname IN ('app_role','app_branch_ids');"
+          PGPASSWORD=medini_dev_password psql -h localhost -U medini -d medini_dev -c "SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY 1;"
+      - name: Seed with full error diagnostics (exact seed.js path)
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgres://medini:medini_dev_password@localhost:5432/medini_dev
+          DATABASE_RUNTIME_URL: postgres://medini_app:medini_app_password@localhost:5432/medini_dev
+          JWT_SECRET: ci_only_insecure_jwt_secret_for_tests_0123456789
+          JWT_REFRESH_SECRET: ci_only_insecure_refresh_secret_for_tests_0123456789
+        run: |
           node -e "
-          const { Client } = require('/tmp/probe/node_modules/pg');
-          (async () => {
-            const c = new Client({ connectionString: 'postgres://medini:medini_dev_password@localhost:5432/medini_dev' });
-            try {
-              await c.connect();
-              const r = await c.query(\"SELECT set_config('app.role','hq',false)\");
-              console.log('PG-DRIVER OK', JSON.stringify(r.rows));
-              await c.end();
-            } catch (e) {
-              console.log('PG-DRIVER FAIL code=' + e.code + ' severity=' + e.severity + ' routine=' + e.routine + ' msg=' + e.message);
+          const { seed } = require('./dist/infrastructure/database/seed.js');
+          seed(process.env.DATABASE_URL)
+            .then((r) => { console.log('SEED OK', JSON.stringify(r)); })
+            .catch((e) => {
+              console.log('SEED FAIL message:', e.message);
+              console.log('SEED FAIL code:', e.code);
+              console.log('SEED FAIL cause.code:', e.cause && e.cause.code);
+              console.log('SEED FAIL cause.severity:', e.cause && e.cause.severity);
+              console.log('SEED FAIL cause.routine:', e.cause && e.cause.routine);
+              console.log('SEED FAIL cause.message:', e.cause && e.cause.message);
+              console.log('SEED FAIL cause.detail:', e.cause && e.cause.detail);
+              console.log('SEED FAIL stack:', e.stack);
               process.exit(1);
-            }
-          })();
+            });
           "

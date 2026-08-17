@@ -1152,6 +1152,140 @@ export const followUpCases = pgTable('follow_up_cases', {
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
 }, (t) => [index('follow_up_cases_branch_status_due_idx').on(t.branchId, t.status, t.dueDate), index('follow_up_cases_patient_idx').on(t.patientId)]);
 
+/* ============================================================================
+   SPRINT 6 (S6-T1) — WHATSAPP HUB production foundation.
+   Persistent SIMULATED state only: NO WAHA transport, NO worker/queue/outbox
+   processing (S8). Domain owner: whatsapp (DATA_OWNERSHIP.whatsappRecords).
+   Governance D1: doctor = NO whatsapp access (RBAC matrix + RLS).
+   ==========================================================================*/
+export const waChannelStatusEnum = pgEnum('wa_channel_status', ['stopped', 'starting', 'working', 'failed', 'need_qr']);
+export const waConversationStatusEnum = pgEnum('wa_conversation_status', ['new', 'open', 'pending', 'escalated', 'resolved', 'archived']);
+export const waMessageDirectionEnum = pgEnum('wa_message_direction', ['in', 'out']);
+export const waSenderTypeEnum = pgEnum('wa_sender_type', ['patient', 'human', 'ai', 'system']);
+export const waMessageStatusEnum = pgEnum('wa_message_status', ['queued', 'sent', 'delivered', 'read', 'failed']);
+export const waAssignmentActionEnum = pgEnum('wa_assignment_action', ['assign', 'unassign', 'handoff', 'return_to_ai']);
+export const waAiQueueStateEnum = pgEnum('wa_ai_queue_state', ['received', 'buffering', 'ready', 'processing', 'responded', 'waiting', 'handoff', 'closed']);
+export const waSafetyDecisionEnum = pgEnum('wa_safety_decision', ['allowed', 'blocked']);
+
+/* 6.1 WA_CHANNELS — one ACTIVE channel per branch (simulated WAHA session). */
+export const waChannels = pgTable('wa_channels', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  phone: varchar('phone', { length: 64 }).notNull(),
+  sessionName: varchar('session_name', { length: 128 }),
+  status: waChannelStatusEnum('status').notNull().default('stopped'),
+  healthScore: integer('health_score').notNull().default(0),
+  sentTodayCount: integer('sent_today_count').notNull().default(0),
+  sentTodayDate: date('sent_today_date'),
+  lastSentAt: timestamp('last_sent_at', { withTimezone: true }),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [index('wa_channels_branch_status_idx').on(t.branchId, t.status), check('wa_channels_health_range', sql`health_score BETWEEN 0 AND 100`)]);
+
+/* 6.2 WA_CONVERSATIONS — one ACTIVE (non-archived) thread per channel+contact. */
+export const waConversations = pgTable('wa_conversations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  channelId: uuid('channel_id').notNull().references(() => waChannels.id, { onDelete: 'restrict' }),
+  contactPhone: varchar('contact_phone', { length: 64 }).notNull(),
+  patientId: uuid('patient_id').references(() => patients.id, { onDelete: 'restrict' }),
+  status: waConversationStatusEnum('status').notNull().default('new'),
+  assignedTo: uuid('assigned_to').references(() => staff.id, { onDelete: 'restrict' }),
+  aiQueueState: waAiQueueStateEnum('ai_queue_state'),
+  unreadCount: integer('unread_count').notNull().default(0),
+  lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
+  firstResponseAt: timestamp('first_response_at', { withTimezone: true }),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [
+  index('wa_conversations_branch_status_idx').on(t.branchId, t.status),
+  index('wa_conversations_assigned_idx').on(t.branchId, t.assignedTo),
+  index('wa_conversations_patient_idx').on(t.patientId),
+  check('wa_conversations_unread_nonneg', sql`unread_count >= 0`),
+]);
+
+/* 6.3 WA_MESSAGES — authoritative communication records. body is SENSITIVE. */
+export const waMessages = pgTable('wa_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  channelId: uuid('channel_id').notNull().references(() => waChannels.id, { onDelete: 'restrict' }),
+  conversationId: uuid('conversation_id').notNull().references(() => waConversations.id, { onDelete: 'restrict' }),
+  direction: waMessageDirectionEnum('direction').notNull(),
+  senderType: waSenderTypeEnum('sender_type').notNull(),
+  body: text('body').notNull(),
+  mediaType: varchar('media_type', { length: 64 }),
+  status: waMessageStatusEnum('status').notNull().default('queued'),
+  idempotencyKey: varchar('idempotency_key', { length: 256 }),
+  externalMessageId: varchar('external_message_id', { length: 256 }),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+  readAt: timestamp('read_at', { withTimezone: true }),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [
+  index('wa_messages_conv_created_idx').on(t.conversationId, t.createdAt),
+  index('wa_messages_branch_status_idx').on(t.branchId, t.status),
+]);
+
+/* 6.4 WA_ASSIGNMENTS — append-only history (NO updated_at/deleted_at). */
+export const waAssignments = pgTable('wa_assignments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  conversationId: uuid('conversation_id').notNull().references(() => waConversations.id, { onDelete: 'restrict' }),
+  action: waAssignmentActionEnum('action').notNull(),
+  assignedTo: uuid('assigned_to').references(() => staff.id, { onDelete: 'restrict' }),
+  actorId: uuid('actor_id').references(() => staff.id, { onDelete: 'restrict' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('wa_assignments_conv_idx').on(t.conversationId, t.createdAt),
+  index('wa_assignments_branch_idx').on(t.branchId, t.createdAt),
+]);
+
+/* 6.5 WA_TEMPLATES — quick-reply content records only (no automated sending). */
+export const waTemplates = pgTable('wa_templates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  name: varchar('name', { length: 256 }).notNull(),
+  body: text('body').notNull(),
+  category: varchar('category', { length: 64 }),
+  active: boolean('active').notNull().default(true),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [index('wa_templates_branch_active_idx').on(t.branchId, t.active)]);
+
+/* 6.6 WA_SAFETY_DECISIONS — auditable record of every safety-gate evaluation. */
+export const waSafetyDecisions = pgTable('wa_safety_decisions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  channelId: uuid('channel_id').notNull().references(() => waChannels.id, { onDelete: 'restrict' }),
+  conversationId: uuid('conversation_id').references(() => waConversations.id, { onDelete: 'restrict' }),
+  messageId: uuid('message_id'),
+  actorId: uuid('actor_id'),
+  decision: waSafetyDecisionEnum('decision').notNull(),
+  blockedReason: varchar('blocked_reason', { length: 64 }),
+  gates: jsonb('gates').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('wa_safety_decisions_branch_idx').on(t.branchId, t.createdAt),
+  index('wa_safety_decisions_channel_idx').on(t.channelId, t.createdAt),
+  index('wa_safety_decisions_conv_idx').on(t.conversationId),
+]);
+
+export type WaChannel = typeof waChannels.$inferSelect;
+export type WaConversation = typeof waConversations.$inferSelect;
+export type WaMessage = typeof waMessages.$inferSelect;
+export type WaAssignment = typeof waAssignments.$inferSelect;
+export type WaTemplate = typeof waTemplates.$inferSelect;
+export type WaSafetyDecision = typeof waSafetyDecisions.$inferSelect;
+
 export type Branch = typeof branches.$inferSelect;
 export type Staff = typeof staff.$inferSelect;
 export type RoleAssignment = typeof roleAssignments.$inferSelect;

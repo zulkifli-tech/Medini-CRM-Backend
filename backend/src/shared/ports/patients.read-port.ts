@@ -30,6 +30,35 @@ export class PatientsReadPort {
     return rows[0] ?? null;
   }
 
+  /**
+   * Sprint 6 (governance §6/§7) — ambiguity-safe patient lookup by phone.
+   * READ-ONLY. Callers normalise the phone (whatsapp-lifecycle.normalizePhone)
+   * and pass the exact digits string; matches against phone AND whatsapp
+   * columns using the digits-suffix form stored in patient master data.
+   * Returns MINIMAL fields (id, branchId, mrn, name) — never copies patient
+   * data into WhatsApp tables. Multiple rows = ambiguity: the CALLER must not
+   * auto-link. Org scope via RLS context; branch visibility by caller check.
+   */
+  async findByPhone(tx: DbClient, orgId: string, normalizedPhone: string) {
+    const local = `0${normalizedPhone.slice(2)}`; /* 6012… → 012… */
+    const intl = normalizedPhone.startsWith('0') ? `6${normalizedPhone}` : normalizedPhone;
+    const rows = await tx
+      .select({ id: patients.id, branchId: patients.branchId, mrn: patients.mrn, name: patients.name })
+      .from(patients)
+      .where(
+        and(
+          eq(patients.orgId, orgId),
+          isNull(patients.deletedAt),
+          sql`(
+            regexp_replace(coalesce(${patients.phone}, ''), '\\D', '', 'g') IN (${intl}, ${local})
+            OR regexp_replace(coalesce(${patients.whatsapp}, ''), '\\D', '', 'g') IN (${intl}, ${local})
+          )`,
+        ),
+      )
+      .limit(5);
+    return rows;
+  }
+
   async countPatients(tx: DbClient, orgId: string, branchId: string | null): Promise<number> {
     const conds = [
       eq(patients.orgId, orgId),

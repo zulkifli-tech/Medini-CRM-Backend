@@ -17,6 +17,19 @@ describe('PERMISSION_MATRIX.can — scope enforcement (server-side)', () => {
     expect(can('receptionist', 'whatsapp', 'create', { actorBranchId: 'uda', branchId: 'uda' })).toBe(true);
   });
 
+  /* SPRINT 6 GOVERNANCE D1: doctor has ZERO whatsapp access (canonical matrix). */
+  it('doctor is denied every whatsapp action (S6 governance decision D1)', () => {
+    for (const action of ['view', 'create', 'edit', 'submit', 'approve', 'delete'] as const) {
+      expect(can('doctor', 'whatsapp', action, { actorBranchId: 'gp', branchId: 'gp', doctorId: 'dr-aina', actorDoctorId: 'dr-aina' })).toBe(false);
+    }
+    /* other roles keep their locked whatsapp cells */
+    expect(can('hq', 'whatsapp', 'view', {})).toBe(true);
+    expect(can('hq', 'whatsapp', 'create', {})).toBe(true);
+    expect(can('branch_manager', 'whatsapp', 'edit', { actorBranchId: 'gp', branchId: 'gp' })).toBe(true);
+    expect(can('branch_manager', 'whatsapp', 'edit', { actorBranchId: 'gp', branchId: 'other' })).toBe(false);
+    expect(can('branch_admin', 'whatsapp', 'view', { actorBranchId: 'gp', branchId: 'gp' })).toBe(true);
+  });
+
   it('doctor scope=own: cross-branch and cross-doctor blocked', () => {
     expect(can('doctor', 'clinical', 'create', { actorBranchId: 'gp', branchId: 'gp', doctorId: 'dr-aina', actorDoctorId: 'dr-aina' })).toBe(true);
     expect(can('doctor', 'clinical', 'create', { actorBranchId: 'gp', branchId: 'gp', doctorId: 'dr-mei', actorDoctorId: 'dr-aina' })).toBe(false);

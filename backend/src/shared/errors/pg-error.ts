@@ -46,6 +46,11 @@ const UNIQUE_CONSTRAINT_MESSAGES: Record<string, string> = {
   bukku_sync_records_idempotency_uq: 'Duplicate sync request (idempotency key)',
   /* Sprint 4 P1 remediation (migration 0010) — commission duplicate guard */
   commission_ledger_org_doctor_period_uq: 'Commission already calculated for this doctor and period',
+  /* Sprint 6 (S6-T1) — whatsapp foundation (migration 0013 constraints) */
+  wa_channels_branch_active_uq: 'Branch already has an active WhatsApp channel',
+  wa_conversations_active_contact_uq: 'An active conversation already exists for this contact on this channel',
+  wa_messages_conv_idem_uq: 'Duplicate message (idempotency key)',
+  wa_templates_org_branch_name_uq: 'Template name already exists for this branch',
 };
 
 /**

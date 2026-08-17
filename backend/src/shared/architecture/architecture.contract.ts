@@ -164,7 +164,12 @@ export const ROLE_DOMAIN_MATRIX: Record<string, Record<string, RoleDomainCell>> 
     reports:      R(true, false, false, false, false, false, 'own'),
     marketing:    NONE,
     operations:   NONE,
-    whatsapp:     R(true, true,  true,  false, false, false, 'branch'),
+    /* SPRINT 6 GOVERNANCE DECISION D1 (Bos + ChatGPT, final): doctor has NO
+     * WhatsApp domain access. Minimal explicit amendment of the canonical
+     * matrix — previously R(true,true,true,false,false,false,'branch') per the
+     * old WhatsApp architecture doc; overridden to NONE. RLS (0013) mirrors
+     * this: doctor is absent from all wa_* policies. */
+    whatsapp:     NONE,
     ai:           NONE,
     admin:        NONE,
     settings:     R(true, false, false, false, false, false, 'own'),

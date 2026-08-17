@@ -24,7 +24,7 @@ import { sql } from 'drizzle-orm';
 export const roleEnum = pgEnum('role', ['hq', 'branch_manager', 'branch_admin', 'doctor']);
 export const branchTypeEnum = pgEnum('branch_type', ['main', 'affiliate']);
 export const branchStatusEnum = pgEnum('branch_status', ['active', 'inactive']);
-export const staffStatusEnum = pgEnum('staff_status', ['Active', 'Suspended', 'Deactivated']);
+export const staffStatusEnum = pgEnum('staff_status', ['Active', 'Suspended', 'Deactivated', 'Invited']);
 export const roleAssignmentStatusEnum = pgEnum('role_assignment_status', ['ACTIVE', 'SUPERSEDED']);
 export const patientStatusEnum = pgEnum('patient_status', ['Active', 'VIP', 'Recall Due', 'Inactive']);
 export const paymentStatusEnum = pgEnum('payment_status_type', ['PENDING', 'PAID', 'OVERDUE']);
@@ -1282,6 +1282,218 @@ export const waSafetyDecisions = pgTable('wa_safety_decisions', {
 export type WaChannel = typeof waChannels.$inferSelect;
 export type WaConversation = typeof waConversations.$inferSelect;
 export type WaMessage = typeof waMessages.$inferSelect;
+
+/* ============================================================================
+   SPRINT 7 (S7-T1) — ADMINISTRATION governance foundation.
+   Domain owner: admin (DATA_OWNERSHIP.adminRecords). Identity reuses the
+   existing staff/role_assignments tables (S1) — Administration governs them;
+   it does NOT rebuild or duplicate identity.
+   ==========================================================================*/
+
+/* 7.1 ORGANIZATIONS — canonical single-tenant record (approved G1). */
+export const organizations = pgTable('organizations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 256 }).notNull(),
+  registrationNo: varchar('registration_no', { length: 64 }),
+  hqAddress: text('hq_address'),
+  status: varchar('status', { length: 16 }).notNull().default('active'),
+  ...auditCols,
+});
+
+export type Organization = typeof organizations.$inferSelect;
+
+/* ============================================================================
+   SPRINT 7 (S7-T2) — SETTINGS governance foundation.
+   Domain owner: settings (DATA_OWNERSHIP.settingsRecords). Configuration
+   registry + hierarchical scopes + versioned values + SecretRef metadata.
+   SecretRef holds NO secret value (approved G9) — reference/metadata only.
+   ==========================================================================*/
+export const settingsScopeLevelEnum = pgEnum('settings_scope_level', ['system', 'organization', 'branch', 'role', 'feature']);
+export const settingsValueTypeEnum = pgEnum('settings_value_type', ['string', 'number', 'boolean', 'json']);
+export const secretStatusEnum = pgEnum('secret_status', ['ABSENT', 'REGISTERED', 'ROTATED', 'REVOKED']);
+
+/* 7.2 SETTINGS_DEFINITIONS — canonical config registry. */
+export const settingsDefinitions = pgTable('settings_definitions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  key: varchar('key', { length: 128 }).notNull(),
+  valueType: settingsValueTypeEnum('value_type').notNull(),
+  description: text('description'),
+  category: varchar('category', { length: 64 }),
+  defaultValue: jsonb('default_value'),
+  allowedScopes: settingsScopeLevelEnum('allowed_scopes').array().notNull().default(sql`'{system,organization,branch}'::settings_scope_level[]`),
+  branchOverridable: boolean('branch_overridable').notNull().default(true),
+  locked: boolean('locked').notNull().default(false),
+  ...auditCols,
+}, (t) => [
+  uniqueIndex('settings_definitions_org_key_uq').on(t.orgId, t.key),
+  index('settings_definitions_category_idx').on(t.orgId, t.category),
+]);
+
+/* 7.3 SETTINGS_VALUES — current value for (key, scope, scope_ref). */
+export const settingsValues = pgTable('settings_values', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  key: varchar('key', { length: 128 }).notNull(),
+  scope: settingsScopeLevelEnum('scope').notNull(),
+  scopeRef: varchar('scope_ref', { length: 128 }),
+  value: jsonb('value').notNull(),
+  version: integer('version').notNull().default(1),
+  updatedBy: uuid('updated_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdBy: uuid('created_by'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('settings_values_key_idx').on(t.orgId, t.key),
+  index('settings_values_scope_idx').on(t.orgId, t.scope, t.scopeRef),
+]);
+
+/* 7.4 SETTINGS_VERSIONS — immutable history (append-only, NO updated_at). */
+export const settingsVersions = pgTable('settings_versions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  key: varchar('key', { length: 128 }).notNull(),
+  scope: settingsScopeLevelEnum('scope').notNull(),
+  scopeRef: varchar('scope_ref', { length: 128 }),
+  oldValue: jsonb('old_value'),
+  newValue: jsonb('new_value'),
+  version: integer('version').notNull(),
+  changedBy: uuid('changed_by'),
+  reason: text('reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('settings_versions_key_idx').on(t.orgId, t.key, t.createdAt),
+  index('settings_versions_scope_idx').on(t.orgId, t.scope, t.scopeRef),
+]);
+
+/* 7.5 SECRET_REFS — secret metadata ONLY (approved G9). No secret value. */
+export const secretRefs = pgTable('secret_refs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  key: varchar('key', { length: 128 }).notNull(),
+  vaultPath: varchar('vault_path', { length: 256 }).notNull(),
+  lastFour: varchar('last_four', { length: 8 }),
+  status: secretStatusEnum('status').notNull().default('ABSENT'),
+  rotatedAt: timestamp('rotated_at', { withTimezone: true }),
+  ...auditCols,
+}, (t) => [
+  uniqueIndex('secret_refs_org_key_uq').on(t.orgId, t.key),
+]);
+
+export type SettingsDefinition = typeof settingsDefinitions.$inferSelect;
+export type SettingsValue = typeof settingsValues.$inferSelect;
+export type SettingsVersion = typeof settingsVersions.$inferSelect;
+export type SecretRef = typeof secretRefs.$inferSelect;
+
+/* ============================================================================
+   SPRINT 7 (S7-T3) — AI MANAGER governance foundation.
+   Domain owner: ai (DATA_OWNERSHIP.aiRecords). GOVERNANCE PLANE ONLY —
+   no LLM calls, no model runtime, no worker/scheduler (approved scope).
+   ==========================================================================*/
+export const aiAgentStatusEnum = pgEnum('ai_agent_status', ['registered', 'enabled', 'paused', 'archived']);
+export const aiCapabilityClassEnum = pgEnum('ai_capability_class', ['READ', 'DRAFT', 'EXECUTE']);
+export const aiGuardrailLevelEnum = pgEnum('ai_guardrail_level', ['HARD_BLOCK', 'APPROVAL_REQUIRED']);
+export const aiRiskLevelEnum = pgEnum('ai_risk_level', ['LOW', 'MEDIUM', 'HIGH']);
+export const aiDecisionEnum = pgEnum('ai_decision', ['AUTO', 'DRAFT', 'APPROVAL_REQUIRED', 'BLOCKED']);
+export const aiKnowledgeTypeEnum = pgEnum('ai_knowledge_type', ['static', 'dynamic']);
+
+/* 7.6 AI_AGENTS — registry; exactly ONE owner domain per agent. */
+export const aiAgents = pgTable('ai_agents', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  key: varchar('key', { length: 64 }).notNull(),
+  name: varchar('name', { length: 128 }).notNull(),
+  icon: varchar('icon', { length: 32 }),
+  ownerDomain: varchar('owner_domain', { length: 32 }).notNull(),
+  status: aiAgentStatusEnum('status').notNull().default('registered'),
+  description: text('description'),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [index('ai_agents_domain_idx').on(t.orgId, t.ownerDomain, t.status)]);
+
+/* 7.7 AI_CAPABILITIES — explicit READ/DRAFT/EXECUTE grants per agent+domain. */
+export const aiCapabilities = pgTable('ai_capabilities', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  agentId: uuid('agent_id').notNull().references(() => aiAgents.id, { onDelete: 'restrict' }),
+  domain: varchar('domain', { length: 32 }).notNull(),
+  capability: aiCapabilityClassEnum('capability').notNull(),
+  draftOnly: boolean('draft_only').notNull().default(false),
+  ...auditCols,
+}, (t) => [
+  uniqueIndex('ai_capabilities_agent_domain_cap_uq').on(t.orgId, t.agentId, t.domain, t.capability),
+  index('ai_capabilities_agent_idx').on(t.agentId),
+]);
+
+/* 7.8 AI_KNOWLEDGE — governance metadata (source_ref owned by domain, not content). */
+export const aiKnowledge = pgTable('ai_knowledge', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  agentId: uuid('agent_id').notNull().references(() => aiAgents.id, { onDelete: 'restrict' }),
+  item: varchar('item', { length: 256 }).notNull(),
+  type: aiKnowledgeTypeEnum('type').notNull().default('static'),
+  sourceDomain: varchar('source_domain', { length: 32 }),
+  sourceRef: varchar('source_ref', { length: 256 }),
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [index('ai_knowledge_agent_idx').on(t.agentId)]);
+
+/* 7.9 AI_AUTOMATIONS — trigger/action metadata ONLY (no execution in S7). */
+export const aiAutomations = pgTable('ai_automations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  agentId: uuid('agent_id').notNull().references(() => aiAgents.id, { onDelete: 'restrict' }),
+  triggerKey: varchar('trigger_key', { length: 128 }).notNull(),
+  actionKey: varchar('action_key', { length: 128 }).notNull(),
+  enabled: boolean('enabled').notNull().default(false),
+  ...auditCols,
+}, (t) => [uniqueIndex('ai_automations_agent_trigger_uq').on(t.orgId, t.agentId, t.triggerKey, t.actionKey)]);
+
+/* 7.10 AI_GUARDRAILS — hard rules; agentId NULL = GLOBAL. HARD_BLOCK absolute. */
+export const aiGuardrails = pgTable('ai_guardrails', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  agentId: uuid('agent_id').references(() => aiAgents.id, { onDelete: 'restrict' }),
+  ruleKey: varchar('rule_key', { length: 64 }).notNull(),
+  rule: text('rule').notNull(),
+  level: aiGuardrailLevelEnum('level').notNull(),
+  ...auditCols,
+}, (t) => [index('ai_guardrails_agent_idx').on(t.orgId, t.agentId)]);
+
+/* 7.11 AI_APPROVAL_RULES — risk-based approval (HIGH = human wajib). */
+export const aiApprovalRules = pgTable('ai_approval_rules', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  agentId: uuid('agent_id').references(() => aiAgents.id, { onDelete: 'restrict' }),
+  actionKey: varchar('action_key', { length: 128 }).notNull(),
+  risk: aiRiskLevelEnum('risk').notNull(),
+  auto: boolean('auto').notNull().default(true),
+  note: text('note'),
+  ...auditCols,
+}, (t) => [uniqueIndex('ai_approval_rules_agent_action_uq').on(t.orgId, t.agentId, t.actionKey)]);
+
+/* 7.12 AI_AUDIT_LOG — append-only governance decisions/actions. */
+export const aiAuditLog = pgTable('ai_audit_log', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  agentId: uuid('agent_id'),
+  actorId: uuid('actor_id'),
+  action: varchar('action', { length: 128 }).notNull(),
+  detail: jsonb('detail'),
+  status: varchar('status', { length: 32 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('ai_audit_log_agent_idx').on(t.orgId, t.agentId, t.createdAt),
+  index('ai_audit_log_status_idx').on(t.orgId, t.status, t.createdAt),
+]);
+
+export type AiAgent = typeof aiAgents.$inferSelect;
+export type AiCapability = typeof aiCapabilities.$inferSelect;
+export type AiKnowledge = typeof aiKnowledge.$inferSelect;
+export type AiAutomation = typeof aiAutomations.$inferSelect;
+export type AiGuardrail = typeof aiGuardrails.$inferSelect;
+export type AiApprovalRule = typeof aiApprovalRules.$inferSelect;
+export type AiAuditLog = typeof aiAuditLog.$inferSelect;
 export type WaAssignment = typeof waAssignments.$inferSelect;
 export type WaTemplate = typeof waTemplates.$inferSelect;
 export type WaSafetyDecision = typeof waSafetyDecisions.$inferSelect;

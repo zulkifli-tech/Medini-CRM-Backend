@@ -18,6 +18,9 @@ import { FinanceModule } from './modules/finance/finance.module';
 import { MarketingModule } from './modules/marketing/marketing.module';
 import { OperationsModule } from './modules/operations/operations.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
+import { AdministrationModule } from './modules/administration/administration.module';
+import { SettingsModule } from './modules/settings/settings.module';
+import { AiManagerModule } from './modules/ai-manager/ai-manager.module';
 import { RootController } from './root.controller';
 
 /**
@@ -43,6 +46,9 @@ import { RootController } from './root.controller';
     MarketingModule,
     OperationsModule,
     WhatsappModule,
+    AdministrationModule,
+    SettingsModule,
+    AiManagerModule,
   ],
   controllers: [RootController],
   providers: [

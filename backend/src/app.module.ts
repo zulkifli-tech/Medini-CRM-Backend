@@ -7,6 +7,7 @@ import { IdempotencyModule } from './shared/idempotency/idempotency.module';
 import { GlobalExceptionFilter } from './shared/errors/global-exception.filter';
 import { ScopeService } from './shared/security/scope.service';
 import { HealthModule } from './infrastructure/health/health.module';
+import { ObservabilityModule } from './infrastructure/observability/observability.module';
 import { QueueModule } from './infrastructure/queue/queue.module';
 import { OutboxModule } from './infrastructure/outbox/outbox.module';
 import { DatabaseModule } from './infrastructure/database/database.module';
@@ -23,6 +24,7 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { AdministrationModule } from './modules/administration/administration.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { AiManagerModule } from './modules/ai-manager/ai-manager.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { RootController } from './root.controller';
 
 /**
@@ -38,6 +40,7 @@ import { RootController } from './root.controller';
     IdempotencyModule,
     DatabaseModule,
     HealthModule,
+    ObservabilityModule,
     QueueModule,
     OutboxModule,
     AuthModule,
@@ -53,6 +56,7 @@ import { RootController } from './root.controller';
     AdministrationModule,
     SettingsModule,
     AiManagerModule,
+    ReportsModule,
   ],
   controllers: [RootController],
   providers: [

@@ -19,7 +19,10 @@ import { getCorrelationId } from '../correlation/correlation';
             ...opts,
             /* attach correlation id + category to every request log */
             customProps: () => ({ correlationId: getCorrelationId(), category: 'api' }),
-            autoLogging: { ignore: (req: { url?: string }) => (req.url ?? '').startsWith('/health') },
+            autoLogging: { ignore: (req: { url?: string }) => {
+              const u = req.url ?? '';
+              return u.startsWith('/health') || u.startsWith('/metrics');
+            } },
           },
         };
       },

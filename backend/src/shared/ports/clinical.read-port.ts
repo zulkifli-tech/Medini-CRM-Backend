@@ -4,7 +4,7 @@ import { DATABASE } from '../../infrastructure/database/database.module';
 import { Database } from '../../infrastructure/database/database';
 import { DbClient } from '../../modules/patients/infrastructure/patients.repository';
 import {
-  encounters, treatmentPlans, clinicalNotes, clinicalTimelineEvents,
+  encounters, treatmentPlans, treatmentPlanItems, treatmentCatalog, clinicalNotes, clinicalTimelineEvents,
 } from '../../infrastructure/database/schema';
 
 /**
@@ -72,5 +72,32 @@ export class ClinicalReadPort {
       .where(and(eq(clinicalTimelineEvents.orgId, orgId), eq(clinicalTimelineEvents.patientId, patientId)))
       .orderBy(desc(clinicalTimelineEvents.createdAt))
       .limit(Math.min(Math.max(limit, 1), 100));
+  }
+
+  /* ---------------- S9 (Reports) — additive aggregate reads ---------------- */
+
+  /** S9: treatment mix by catalog category over a range (Q3: clinical-owned
+   * FK-clean source — treatment_plan_items ⋈ treatment_catalog, branch via
+   * parent treatment_plans). Excludes soft-deleted plans/items. */
+  async treatmentMix(
+    tx: DbClient, orgId: string, branchId: string | null, from: string, to: string,
+  ): Promise<Array<{ category: string; count: number }>> {
+    const conds = [
+      eq(treatmentPlans.orgId, orgId),
+      isNull(treatmentPlans.deletedAt),
+      isNull(treatmentPlanItems.deletedAt),
+      sql`${treatmentPlans.createdAt}::date >= ${from}`,
+      sql`${treatmentPlans.createdAt}::date <= ${to}`,
+    ];
+    if (branchId) conds.push(eq(treatmentPlans.branchId, branchId));
+    const rows = await tx
+      .select({ category: treatmentCatalog.category, count: sql<number>`count(*)::int` })
+      .from(treatmentPlanItems)
+      .innerJoin(treatmentPlans, eq(treatmentPlanItems.planId, treatmentPlans.id))
+      .innerJoin(treatmentCatalog, eq(treatmentPlanItems.treatmentId, treatmentCatalog.id))
+      .where(and(...conds))
+      .groupBy(treatmentCatalog.category)
+      .orderBy(treatmentCatalog.category);
+    return rows.map((r) => ({ category: r.category, count: r.count }));
   }
 }

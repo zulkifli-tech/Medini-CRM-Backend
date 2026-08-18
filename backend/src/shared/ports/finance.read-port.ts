@@ -66,4 +66,37 @@ export class FinanceReadPort {
       .from(expenses).where(and(...cond));
     return rows[0]!.total;
   }
+
+  /* ---------------- S9 (Reports) — additive aggregate reads ---------------- */
+
+  /** S9: Confirmed revenue per branch over a range (scope: pass branchId to
+   * pin one branch, or omit for org-wide per-branch rows). Canonical revenue
+   * rule unchanged: status='confirmed', soft-delete excluded. */
+  async revenueByBranch(tx: DbClient, orgId: string, opts: {
+    branchId?: string | null; from?: string; to?: string;
+  }): Promise<Array<{ branchId: string; revenue: string }>> {
+    const cond: SQL[] = [eq(saleRecords.orgId, orgId), isNull(saleRecords.deletedAt), eq(saleRecords.status, 'confirmed')];
+    if (opts.branchId) cond.push(eq(saleRecords.branchId, opts.branchId));
+    if (opts.from) cond.push(sql`${saleRecords.saleDate} >= ${opts.from}`);
+    if (opts.to) cond.push(sql`${saleRecords.saleDate} <= ${opts.to}`);
+    const rows = await tx
+      .select({ branchId: saleRecords.branchId, revenue: sql<string>`COALESCE(SUM(${saleRecords.amount}), 0)::text` })
+      .from(saleRecords).where(and(...cond)).groupBy(saleRecords.branchId);
+    return rows.map((r) => ({ branchId: r.branchId, revenue: r.revenue }));
+  }
+
+  /** S9: Confirmed revenue per day over a range (trend series). */
+  async revenueDailySeries(tx: DbClient, orgId: string, opts: {
+    branchId?: string | null; from: string; to: string;
+  }): Promise<Array<{ date: string; revenue: string }>> {
+    const cond: SQL[] = [
+      eq(saleRecords.orgId, orgId), isNull(saleRecords.deletedAt), eq(saleRecords.status, 'confirmed'),
+      sql`${saleRecords.saleDate} >= ${opts.from}`, sql`${saleRecords.saleDate} <= ${opts.to}`,
+    ];
+    if (opts.branchId) cond.push(eq(saleRecords.branchId, opts.branchId));
+    const rows = await tx
+      .select({ date: saleRecords.saleDate, revenue: sql<string>`COALESCE(SUM(${saleRecords.amount}), 0)::text` })
+      .from(saleRecords).where(and(...cond)).groupBy(saleRecords.saleDate).orderBy(saleRecords.saleDate);
+    return rows.map((r) => ({ date: r.date, revenue: r.revenue }));
+  }
 }

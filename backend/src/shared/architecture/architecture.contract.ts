@@ -161,7 +161,11 @@ export const ROLE_DOMAIN_MATRIX: Record<string, Record<string, RoleDomainCell>> 
     clinical:     R(true, true,  true,  false, false, false, 'own'),
     documents:    R(true, true,  false, false, false, false, 'own'),
     finance:      R(false, false, false, false, false, false, 'own'), /* own patient payment status via accessor */
-    reports:      R(true, false, false, false, false, false, 'own'),
+    /* SPRINT 9 GOVERNANCE DECISION Q1 (Bos, S9 Phase-2 approval): doctor has NO
+     * Reports access. REPORTS-ANALYTICS-LOCKED.md §10 (Phase-7, newer domain
+     * authority) — Receptionist/Doctor blocked. Supersedes the earlier
+     * view/'own' cell, mirroring the S6 D1 whatsapp amendment precedent. */
+    reports:      NONE,
     marketing:    NONE,
     operations:   NONE,
     /* SPRINT 6 GOVERNANCE DECISION D1 (Bos + ChatGPT, final): doctor has NO

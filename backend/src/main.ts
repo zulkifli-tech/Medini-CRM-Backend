@@ -19,7 +19,7 @@ async function bootstrap(): Promise<void> {
 
   /* API prefix + versioning → /api/v1 */
   const prefix = config.get<string>('app.apiPrefix') ?? 'api';
-  app.setGlobalPrefix(prefix, { exclude: ['health/live', 'health/ready'] });
+  app.setGlobalPrefix(prefix, { exclude: ['health/live', 'health/ready', 'metrics'] });
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: config.get<string>('app.apiVersion') ?? 'v1' });
 
   /* Global validation (whitelist + transform). Domain DTOs arrive later. */

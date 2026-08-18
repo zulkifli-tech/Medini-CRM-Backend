@@ -1557,3 +1557,50 @@ export type Checklist = typeof checklists.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type Incident = typeof incidents.$inferSelect;
 export type LabCase = typeof labCases.$inferSelect;
+
+/* ============================================================================
+   S9 — REPORTS/ANALYTICS FOUNDATION (0024)
+   Reports = READ/INTELLIGENCE LAYER. These two tables are the ONLY persisted
+   artifacts of the reports domain: the canonical KPI registry (definitions,
+   not facts) and the immutable report-usage audit trail.
+   ==========================================================================*/
+
+/* S9-1. KPI_DEFINITIONS — canonical KPI registry (RPT_KPIS). Reports OWNS
+ * KpiDefinition; facts remain owned by domain tables. Versioned, never deleted. */
+export const kpiDefinitions = pgTable('kpi_definitions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  kpiKey: varchar('kpi_key', { length: 64 }).notNull(),
+  name: varchar('name', { length: 128 }).notNull(),
+  formula: text('formula').notNull(),
+  sourceDomain: varchar('source_domain', { length: 32 }).notNull(),
+  unit: varchar('unit', { length: 16 }).notNull(),
+  scopeRules: jsonb('scope_rules').notNull(),
+  version: integer('version').notNull().default(1),
+  status: varchar('status', { length: 16 }).notNull().default('published'),
+  ...auditCols,
+}, (t) => [
+  uniqueIndex('kpi_definitions_org_key_version_uq').on(t.orgId, t.kpiKey, t.version),
+  index('kpi_definitions_org_idx').on(t.orgId),
+]);
+
+/* S9-2. REPORT_AUDIT — immutable usage trail (Reports OWNS ReportAudit).
+ * Append-only: RLS grants SELECT (hq) + INSERT (hq/branch_manager); no
+ * UPDATE/DELETE permissive policies exist. */
+export const reportAudit = pgTable('report_audit', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  actorId: uuid('actor_id').notNull(),
+  actorRole: varchar('actor_role', { length: 32 }).notNull(),
+  action: varchar('action', { length: 48 }).notNull(),
+  view: varchar('view', { length: 64 }).notNull(),
+  filter: jsonb('filter'),
+  correlationId: varchar('correlation_id', { length: 64 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('report_audit_org_created_idx').on(t.orgId, t.createdAt),
+  index('report_audit_org_actor_idx').on(t.orgId, t.actorId),
+]);
+
+export type KpiDefinition = typeof kpiDefinitions.$inferSelect;
+export type ReportAuditRow = typeof reportAudit.$inferSelect;

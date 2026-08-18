@@ -58,6 +58,7 @@ describe('patients module — integration (live PG)', () => {
     /* simulate runAs(): transaction-local GUC context as a branch_manager */
     const p = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT set_config('app.role', 'branch_manager', true)`);
+      await tx.execute(sql`SELECT set_config('app.org_id', ${TEST_ORG}, true)`);
       await tx.execute(sql`SELECT set_config('app.branch_ids', ${bId}, true)`);
       return repo.createPatient(tx, TEST_ORG, bId, {
         mrn: 'MDN-TST01', name: 'Integration Patient', phone: '+6012-345 6789',

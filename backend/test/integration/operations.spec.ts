@@ -113,10 +113,10 @@ describe('S5-T2 Operations — live RLS/RBAC/lifecycle/audit/idempotency (unique
     const audit = new InMemoryAuditAdapter(); const idem = new InMemoryIdempotencyAdapter();
     const { db, close } = createFreshDatabase(RUNTIME_URL); const svc = build(db, audit, idem);
     await svc.createTask(hq, { branchId: s.b1, title: 'RLS probe task' });
-    await db.execute(sql.raw(`SELECT set_config('app.role','branch_manager',false), set_config('app.branch_ids','${s.b2}',false)`));
+    await db.execute(sql.raw(`SELECT set_config('app.role','branch_manager',false), set_config('app.org_id','${TEST_ORG}',false), set_config('app.branch_ids','${s.b2}',false)`));
     const rows = await db.execute(sql`SELECT id FROM tasks WHERE org_id=${TEST_ORG}`);
     expect((rows as unknown as { rows: unknown[] }).rows.length).toBe(0);
-    await db.execute(sql.raw(`SELECT set_config('app.role','hq',false), set_config('app.branch_ids','${s.b1},${s.b2}',false)`));
+    await db.execute(sql.raw(`SELECT set_config('app.role','hq',false), set_config('app.org_id','${TEST_ORG}',false), set_config('app.branch_ids','${s.b1},${s.b2}',false)`));
     const hqRows = await db.execute(sql`SELECT id FROM tasks WHERE org_id=${TEST_ORG}`);
     expect((hqRows as unknown as { rows: unknown[] }).rows.length).toBe(1);
     await purge(admin.db); await admin.close(); await close();

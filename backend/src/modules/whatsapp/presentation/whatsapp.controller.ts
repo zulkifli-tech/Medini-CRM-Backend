@@ -18,6 +18,7 @@ export class WhatsappController {
   @Patch('channels/:id/status') @RequirePermission('whatsapp', 'edit') channelStatus(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) { return this.service.transitionChannel(req.principal!, id, body); }
   @Get('channels/:id/health') @RequirePermission('whatsapp', 'view') channelHealth(@Req() req: AuthedRequest, @Param('id') id: string) { return this.service.getChannelHealth(req.principal!, id); }
   @Patch('channels/:id/health') @RequirePermission('whatsapp', 'edit') updateChannelHealth(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) { return this.service.updateChannelHealth(req.principal!, id, body); }
+  @Post('channels/:id/resume-auto-pause') @RequirePermission('whatsapp', 'edit') resumeAutoPause(@Req() req: AuthedRequest, @Param('id') id: string) { return this.service.resumeAutoPause(req.principal!, id); }
 
   /* ---------- conversations ---------- */
   @Post('conversations') @RequirePermission('whatsapp', 'create') createConversation(@Req() req: AuthedRequest, @Body() body: unknown) { return this.service.createConversation(req.principal!, body); }

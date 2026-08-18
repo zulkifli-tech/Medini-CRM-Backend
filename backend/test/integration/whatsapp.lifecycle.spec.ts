@@ -110,11 +110,11 @@ describe('S6 safety engine — six locked gates in order (M2 Fasa 1)', () => {
     /* 10:00 MYT expressed in UTC (02:00Z) is INSIDE the window — MYT interpretation */
     expect(evaluateWaSafety({ ...base, now: new Date('2026-08-17T02:00:00Z') }).allowed).toBe(true);
   });
-  it('gate 5: < 60s since last send → RATE_LIMIT', () => {
-    const now = new Date('2026-08-17T10:00:30+08:00');
+  it('gate 5: < 30s since last send → RATE_LIMIT (D18 override: 30–60s randomized floor)', () => {
+    const now = new Date('2026-08-17T10:00:29+08:00');
     const last = new Date('2026-08-17T10:00:00+08:00');
     expect(evaluateWaSafety({ ...base, now, lastSentAt: last }).blockedReason).toBe('RATE_LIMIT');
-    const ok = new Date('2026-08-17T10:01:01+08:00');
+    const ok = new Date('2026-08-17T10:00:30+08:00');
     expect(evaluateWaSafety({ ...base, now: ok, lastSentAt: last }).allowed).toBe(true);
   });
   it('gate 6: every 25th send → AUTO_PAUSED', () => {

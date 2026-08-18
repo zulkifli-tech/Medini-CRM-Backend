@@ -52,6 +52,7 @@ async function asRole(role: string, fn: (db: ReturnType<typeof createDatabase>) 
   await (db as unknown as { transaction: (f: (t: unknown) => Promise<void>) => Promise<void> }).transaction(async (tx) => {
     const t = tx as ReturnType<typeof createDatabase>;
     await t.execute(sql`SELECT set_config('app.role', ${role}, true)`);
+    await t.execute(sql`SELECT set_config('app.org_id', ${ORG}, true)`);
     const branches = role === 'hq'
       ? ((await t.execute(sql`SELECT id::text AS id FROM branches WHERE deleted_at IS NULL`)) as unknown as RawRows).rows.map((r) => String(r.id))
       : [branchId];

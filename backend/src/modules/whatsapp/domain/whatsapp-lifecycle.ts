@@ -7,7 +7,7 @@
 
 export type WaChannelState = 'stopped' | 'starting' | 'working' | 'failed' | 'need_qr';
 export type WaConversationState = 'new' | 'open' | 'pending' | 'escalated' | 'resolved' | 'archived';
-export type WaMessageState = 'queued' | 'sent' | 'delivered' | 'read' | 'failed';
+export type WaMessageState = 'queued' | 'processing' | 'sent' | 'delivered' | 'read' | 'failed';
 export type WaAiQueueState = 'received' | 'buffering' | 'ready' | 'processing' | 'responded' | 'waiting' | 'handoff' | 'closed';
 
 function allows(current: string, next: string, transitions: Record<string, readonly string[]>): boolean {
@@ -35,9 +35,10 @@ export const canTransitionWaConversation = (current: WaConversationState, next: 
   archived: [] /* terminal — same contact returns → NEW conversation */,
 });
 
-/* ---------- Message: queued→sent→delivered→read · queued→failed (terminal). ---------- */
+/* ---------- Message: queued→processing→sent→delivered→read · queued→processing→failed (terminal). ---------- */
 export const canTransitionWaMessage = (current: WaMessageState, next: WaMessageState) => allows(current, next, {
-  queued: ['sent', 'failed'],
+  queued: ['processing', 'sent', 'failed'],
+  processing: ['sent', 'failed'],
   sent: ['delivered'],
   delivered: ['read'],
   read: [],
@@ -64,8 +65,14 @@ export const WA_HEALTH_READY_MIN = 70; /* score >= 70 = ready to send */
 export const WA_DAILY_CAP_DEFAULT = 50;
 export const WA_SEND_WINDOW_START = 9; /* 09:00 local */
 export const WA_SEND_WINDOW_END = 18; /* 18:00 local */
-export const WA_MIN_INTERVAL_MS = 60_000; /* 60s lower bound of the 60–180s cooldown */
+/* D18: 30s lower bound approved by Bos governance (S8 remediation authorization,
+ * master prompt §D18 override: "30–60 SECOND randomized per-channel cooldown").
+ * Worker randomizes each send to 30–60s. */
+export const WA_MIN_INTERVAL_MS = 30_000;
 export const WA_AUTO_PAUSE_EVERY = 25; /* every 25 sends → auto-pause gate engages */
+export const WA_AUTO_PAUSE_MS = 15 * 60_000; /* N6-3: auto-pause duration before auto-resume */
+export const WA_SEND_DELAY_MIN_MS = 30_000; /* D18 override: randomized cooldown floor */
+export const WA_SEND_DELAY_MAX_MS = 60_000; /* D18 override: randomized cooldown ceiling */
 
 export type WaBlockedReason =
   | 'CHANNEL_UNAVAILABLE'
@@ -86,6 +93,9 @@ export interface WaSafetyInput {
   windowEndHour?: number;
   minIntervalMs?: number;
   autoPauseEvery?: number;
+  /** When true (post auto-resume), gate 6 is treated as passed so the resume
+   * send is not immediately re-blocked by the deterministic threshold. */
+  skipAutoPause?: boolean;
 }
 
 export interface WaSafetyGateResult {
@@ -137,7 +147,9 @@ export function evaluateWaSafety(input: WaSafetyInput): WaSafetyEvaluation {
     return { allowed: false, blockedReason: 'RATE_LIMIT', gates };
   }
   /* 6. Auto-Pause (every N sends → pause cycle; human review resumes the channel) */
-  if (!push('auto_pause', (input.sentTodayCount + 1) % autoPauseEvery !== 0, 'AUTO_PAUSED')) {
+  if (input.skipAutoPause) {
+    gates.push({ gate: 'auto_pause', passed: true, reason: null });
+  } else if (!push('auto_pause', (input.sentTodayCount + 1) % autoPauseEvery !== 0, 'AUTO_PAUSED')) {
     return { allowed: false, blockedReason: 'AUTO_PAUSED', gates };
   }
   return { allowed: true, blockedReason: null, gates };

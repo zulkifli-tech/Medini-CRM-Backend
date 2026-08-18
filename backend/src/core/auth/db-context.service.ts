@@ -4,6 +4,21 @@ import { DATABASE } from '../../infrastructure/database/database.module';
 import { Database } from '../../infrastructure/database/database';
 import { Principal } from './principal';
 
+export interface ScopedSystemWorkerContext {
+  readonly orgId: string;
+  readonly branchIds: readonly string[];
+  readonly correlationId: string;
+  readonly source: 'system_worker';
+}
+
+/** Non-human identity used only by trusted outbox/queue code. */
+export const SYSTEM_WORKER_PRINCIPAL = {
+  staffId: '00000000-0000-0000-0000-000000000000',
+  username: 'system-worker',
+  role: 'system_worker',
+  doctorId: null,
+} as const;
+
 /**
  * DbContextService — establishes the trusted per-request PostgreSQL security
  * context (GUCs) consumed by the RLS policies (Part 11/12).
@@ -49,6 +64,7 @@ export class DbContextService {
        *   BEGIN → SET LOCAL app.role → query branches (now sees HQ context) →
        *   SET LOCAL app.branch_ids/app.doctor_id → run operation → COMMIT. */
       await t.execute(sql`SELECT set_config('app.role', ${role}, true)`);
+      await t.execute(sql`SELECT set_config('app.org_id', ${principal.orgId}, true)`);
 
       let branchIds: string[] = [];
       if (role === 'hq') {
@@ -66,6 +82,21 @@ export class DbContextService {
         sql`SELECT set_config('app.doctor_id', ${principal.doctorId ?? ''}, true)`,
       );
 
+      return fn(t);
+    });
+  }
+
+  /** Executes trusted queued work without a human staff identity. Scope is
+   * supplied by the persisted event/job envelope, never by HTTP input. */
+  async runAsWorker<T>(context: ScopedSystemWorkerContext, fn: (tx: Database) => Promise<T>): Promise<T> {
+    if (!this.db) throw new Error('Database not configured');
+    if (!context.orgId || context.branchIds.some((id) => !id)) throw new Error('Invalid system worker scope');
+    return this.db.transaction(async (tx: unknown) => {
+      const t = tx as Database;
+      await t.execute(sql`SELECT set_config('app.role', 'system_worker', true)`);
+      await t.execute(sql`SELECT set_config('app.org_id', ${context.orgId}, true)`);
+      await t.execute(sql`SELECT set_config('app.branch_ids', ${context.branchIds.join(',')}, true)`);
+      await t.execute(sql`SELECT set_config('app.doctor_id', '', true)`);
       return fn(t);
     });
   }

@@ -64,6 +64,7 @@ describe('appointments module — integration (live PG)', () => {
     const repo = new AppointmentsRepository();
     const appt = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT set_config('app.role', 'branch_manager', true)`);
+      await tx.execute(sql`SELECT set_config('app.org_id', ${TEST_ORG}, true)`);
       await tx.execute(sql`SELECT set_config('app.branch_ids', ${bId}, true)`);
       const code = await new OrgAllocator(tx).nextAptCode(TEST_ORG);
       return repo.create(tx, TEST_ORG, bId, {
@@ -97,6 +98,7 @@ describe('appointments module — integration (live PG)', () => {
     const run = () =>
       db.transaction(async (tx) => {
         await tx.execute(sql`SELECT set_config('app.role', 'branch_manager', true)`);
+      await tx.execute(sql`SELECT set_config('app.org_id', ${TEST_ORG}, true)`);
         await tx.execute(sql`SELECT set_config('app.branch_ids', ${bId}, true)`);
         const code = await new OrgAllocator(tx).nextAptCode(TEST_ORG);
         return repo.create(tx, TEST_ORG, bId, {
@@ -108,6 +110,7 @@ describe('appointments module — integration (live PG)', () => {
     const a = await run();
     const clash = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT set_config('app.role', 'branch_manager', true)`);
+      await tx.execute(sql`SELECT set_config('app.org_id', ${TEST_ORG}, true)`);
       await tx.execute(sql`SELECT set_config('app.branch_ids', ${bId}, true)`);
       return repo.findDoctorOverlap(tx, TEST_ORG, bId, doctorId, '2026-09-02', '10:30', 60);
     });
@@ -130,6 +133,7 @@ describe('appointments module — integration (live PG)', () => {
     const repo = new AppointmentsRepository();
     const appt = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT set_config('app.role', 'branch_manager', true)`);
+      await tx.execute(sql`SELECT set_config('app.org_id', ${TEST_ORG}, true)`);
       await tx.execute(sql`SELECT set_config('app.branch_ids', ${bId}, true)`);
       const code = await new OrgAllocator(tx).nextAptCode(TEST_ORG);
       return repo.create(tx, TEST_ORG, bId, {
@@ -141,6 +145,7 @@ describe('appointments module — integration (live PG)', () => {
     expect(canTransition('booked', 'confirmed')).toBe(true);
     const updated = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT set_config('app.role', 'branch_manager', true)`);
+      await tx.execute(sql`SELECT set_config('app.org_id', ${TEST_ORG}, true)`);
       await tx.execute(sql`SELECT set_config('app.branch_ids', ${bId}, true)`);
       return repo.updateStatus(tx, TEST_ORG, appt.id, 'confirmed', appt.version);
     });
@@ -150,6 +155,7 @@ describe('appointments module — integration (live PG)', () => {
     /* stale version → null (concurrent modification denied) */
     const stale = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT set_config('app.role', 'branch_manager', true)`);
+      await tx.execute(sql`SELECT set_config('app.org_id', ${TEST_ORG}, true)`);
       await tx.execute(sql`SELECT set_config('app.branch_ids', ${bId}, true)`);
       return repo.updateStatus(tx, TEST_ORG, appt.id, 'checked-in', 1);
     });
@@ -173,6 +179,7 @@ describe('appointments module — integration (live PG)', () => {
     const mk = async (time: string, status: string) => {
       return db.transaction(async (tx) => {
         await tx.execute(sql`SELECT set_config('app.role', 'branch_manager', true)`);
+      await tx.execute(sql`SELECT set_config('app.org_id', ${TEST_ORG}, true)`);
         await tx.execute(sql`SELECT set_config('app.branch_ids', ${bId}, true)`);
         const code = await new OrgAllocator(tx).nextAptCode(TEST_ORG);
         const a = await repo.create(tx, TEST_ORG, bId, {
@@ -189,6 +196,7 @@ describe('appointments module — integration (live PG)', () => {
 
     const queue = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT set_config('app.role', 'branch_manager', true)`);
+      await tx.execute(sql`SELECT set_config('app.org_id', ${TEST_ORG}, true)`);
       await tx.execute(sql`SELECT set_config('app.branch_ids', ${bId}, true)`);
       return repo.dayQueue(tx, TEST_ORG, bId, '2026-09-04');
     });

@@ -71,6 +71,7 @@ function asRole<T>(
 ): Promise<T> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('app.role', ${role}, true)`);
+    await tx.execute(sql`SELECT set_config('app.org_id', ${ORG_A}, true)`);
     return fn(tx);
   });
 }

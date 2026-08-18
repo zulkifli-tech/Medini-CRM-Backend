@@ -340,6 +340,8 @@ export const domainEvents = pgTable('domain_events', {
    ==========================================================================*/
 export const processedEvents = pgTable('processed_events', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id'),
+  branchId: uuid('branch_id'),
   consumer: varchar('consumer', { length: 128 }).notNull(),
   eventId: uuid('event_id').notNull(),
   processedAt: timestamp('processed_at', { withTimezone: true }).notNull().defaultNow(),
@@ -954,6 +956,7 @@ export const bukkuSyncRecords = pgTable('bukku_sync_records', {
   orgId: uuid('org_id').notNull(),
   entityType: varchar('entity_type', { length: 64 }).notNull(),
   entityId: uuid('entity_id').notNull(),
+  branchId: uuid('branch_id'),
   syncStatus: syncStatusEnum('sync_status').notNull().default('pending'),
   bukkuId: varchar('bukku_id', { length: 128 }),
   idempotencyKey: varchar('idempotency_key', { length: 256 }).notNull(),
@@ -1162,7 +1165,7 @@ export const waChannelStatusEnum = pgEnum('wa_channel_status', ['stopped', 'star
 export const waConversationStatusEnum = pgEnum('wa_conversation_status', ['new', 'open', 'pending', 'escalated', 'resolved', 'archived']);
 export const waMessageDirectionEnum = pgEnum('wa_message_direction', ['in', 'out']);
 export const waSenderTypeEnum = pgEnum('wa_sender_type', ['patient', 'human', 'ai', 'system']);
-export const waMessageStatusEnum = pgEnum('wa_message_status', ['queued', 'sent', 'delivered', 'read', 'failed']);
+export const waMessageStatusEnum = pgEnum('wa_message_status', ['queued', 'processing', 'sent', 'delivered', 'read', 'failed']);
 export const waAssignmentActionEnum = pgEnum('wa_assignment_action', ['assign', 'unassign', 'handoff', 'return_to_ai']);
 export const waAiQueueStateEnum = pgEnum('wa_ai_queue_state', ['received', 'buffering', 'ready', 'processing', 'responded', 'waiting', 'handoff', 'closed']);
 export const waSafetyDecisionEnum = pgEnum('wa_safety_decision', ['allowed', 'blocked']);
@@ -1180,6 +1183,10 @@ export const waChannels = pgTable('wa_channels', {
   sentTodayDate: date('sent_today_date'),
   lastSentAt: timestamp('last_sent_at', { withTimezone: true }),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+  autoPausedAt: timestamp('auto_paused_at', { withTimezone: true }),
+  autoPauseResumedAt: timestamp('auto_pause_resumed_at', { withTimezone: true }),
+  qrCode: text('qr_code'),
+  qrExpiresAt: timestamp('qr_expires_at', { withTimezone: true }),
   ...auditCols,
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
 }, (t) => [index('wa_channels_branch_status_idx').on(t.branchId, t.status), check('wa_channels_health_range', sql`health_score BETWEEN 0 AND 100`)]);
@@ -1222,6 +1229,7 @@ export const waMessages = pgTable('wa_messages', {
   status: waMessageStatusEnum('status').notNull().default('queued'),
   idempotencyKey: varchar('idempotency_key', { length: 256 }),
   externalMessageId: varchar('external_message_id', { length: 256 }),
+  lastError: text('last_error'),
   sentAt: timestamp('sent_at', { withTimezone: true }),
   deliveredAt: timestamp('delivered_at', { withTimezone: true }),
   readAt: timestamp('read_at', { withTimezone: true }),

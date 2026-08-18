@@ -287,11 +287,12 @@ describe('S7 Administration — RBAC (HQ only) + lifecycle + last-HQ + versioned
   dbIt('staff + role_assignments have NO RLS (consistent with S1 design); access is app+guard enforced', async () => {
     const admin = createFreshDatabase(ADMIN_URL);
     const { db, close } = createFreshDatabase(RUNTIME_URL);
-    /* staff/role_assignments are NOT FORCE RLS (they predate RLS hardening and are
-     * identity-source tables written by the service role). This test documents the
-     * invariant so a future change that enables RLS here is caught. */
+    /* staff/role_assignments have RLS ENABLED (N9-1: least-privilege hardening for
+     * legacy S0 tables). Human access preserved via permissive policies;
+     * system_worker writes denied via restrictive policies. This test documents
+     * the invariant so a future change that alters RLS here is caught. */
     const rows = await db.execute(sql`SELECT relrowsecurity AS rls FROM pg_class WHERE relname='staff'`);
-    expect((rows as unknown as { rows: Array<{ rls: boolean }> }).rows[0]!.rls).toBe(false);
+    expect((rows as unknown as { rows: Array<{ rls: boolean }> }).rows[0]!.rls).toBe(true);
     await admin.close(); await close();
   });
 });

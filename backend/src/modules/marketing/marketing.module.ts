@@ -6,11 +6,36 @@ import { ClinicalReadPort } from '../../shared/ports/clinical.read-port';
 import { MarketingController } from './presentation/marketing.controller';
 import { MarketingService } from './application/marketing.service';
 import { MarketingRepository } from './infrastructure/marketing.repository';
+import { RecallScheduler, RecallWorker } from './infrastructure/recall.worker';
+import { RECOVERY_SWEEP, RecoverySweep } from '../../infrastructure/outbox/recovery.scheduler';
+
+/** F-03: due-recall scheduling, driven by the central recovery scheduler's
+ *  hourly tick — the production caller for scheduleDue(). */
+const RECALL_RECOVERY_SWEEP = {
+  provide: RECOVERY_SWEEP,
+  useFactory: (scheduler: RecallScheduler): RecoverySweep => ({
+    name: 'recall-schedule-due',
+    run: async (ctx) => {
+      const today = new Date().toISOString().slice(0, 10);
+      const orgCtx = { orgId: ctx.orgId, branchIds: [], correlationId: ctx.correlationId, source: 'system_worker' as const };
+      const branches = await scheduler.listDueBranches(orgCtx, today);
+      for (const branchId of branches) {
+        await scheduler.scheduleDue({ ...ctx, branchIds: [branchId] }, today);
+      }
+    },
+  }),
+  inject: [RecallScheduler],
+  multi: true,
+};
 
 @Module({
   imports: [AuthModule],
   controllers: [MarketingController],
-  providers: [MarketingService, MarketingRepository, PatientsReadPort, AppointmentsReadPort, ClinicalReadPort],
+  providers: [
+    MarketingService, MarketingRepository,
+    PatientsReadPort, AppointmentsReadPort, ClinicalReadPort,
+    RecallScheduler, RecallWorker, RECALL_RECOVERY_SWEEP,
+  ],
   exports: [MarketingService],
 })
 export class MarketingModule {}

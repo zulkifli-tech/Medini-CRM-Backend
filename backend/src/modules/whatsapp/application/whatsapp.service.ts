@@ -1,15 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
-import { DbContextService } from '../../../core/auth/db-context.service';
+import { sql } from 'drizzle-orm';
+import { DbContextService, ScopedSystemWorkerContext, SYSTEM_WORKER_PRINCIPAL } from '../../../core/auth/db-context.service';
 import { Principal } from '../../../core/auth/principal';
 import { AuditService } from '../../../shared/audit/audit.service';
 import { PatientsReadPort } from '../../../shared/ports/patients.read-port';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../../shared/errors/errors';
 import { WhatsappRepository, WA_PAGE_MAX } from '../infrastructure/whatsapp.repository';
+import { WahaAdapter } from '../infrastructure/waha.adapter';
+import { QueueRegistry } from '../../../infrastructure/queue/queue.registry';
+import { getCorrelationId } from '../../../shared/correlation/correlation';
 import {
   canTransitionWaChannel, canTransitionWaConversation, canTransitionWaMessage, canTransitionWaAiQueue,
   evaluateWaSafety, waHealthBand, normalizePhone,
   WaChannelState, WaConversationState, WaMessageState, WaAiQueueState,
+  WA_AUTO_PAUSE_MS,
 } from '../domain/whatsapp-lifecycle';
 
 const uuid = z.string().uuid();
@@ -58,7 +63,17 @@ export class WhatsappService {
      * instant so safety-gate evaluation (09:00–18:00 MYT window) is
      * deterministic. No behavioural difference in production. */
     private readonly nowFn: () => Date = () => new Date(),
+    private readonly waha: WahaAdapter = new WahaAdapter(),
+    private readonly queues?: QueueRegistry,
   ) {}
+
+  /** Exposed for the transport worker — adapter boundary, not domain logic. */
+  get transport(): WahaAdapter { return this.waha; }
+
+  /** Test seam: HQ-scoped channel mutation for setup (not for production use). */
+  async hqUpdateChannel(p: Principal, id: string, set: Record<string, unknown>) {
+    return this.dbCtx.runAs(p, async (tx) => this.repo.updateChannel(tx, p.orgId, id, set));
+  }
 
   private parse<T>(schema: z.ZodType<T>, raw: unknown): T {
     const result = schema.safeParse(raw);
@@ -196,8 +211,9 @@ export class WhatsappService {
      ==========================================================================*/
   async createMessage(p: Principal, conversationId: string, raw: unknown) {
     const input = this.parse(messageInput, raw);
+    let result: { message: { id: string; [k: string]: unknown }; branchId: string; channelId: string; conversationId: string };
     try {
-      return await this.dbCtx.runAs(p, async (tx) => {
+      result = await this.dbCtx.runAs(p, async (tx) => {
       /* conv.lock semantics (M2 D6-D7): transaction-scoped row lock — one
        * processing cycle per conversation at a time. NOT a distributed lock. */
       const conv = await this.repo.lockConversation(tx, p.orgId, conversationId);
@@ -209,7 +225,7 @@ export class WhatsappService {
       const replay = await this.repo.findMessageByIdempotencyKey(tx, p.orgId, conversationId, input.idempotencyKey);
       if (replay) {
         if (replay.body !== input.body) throw new ConflictError('Idempotency key was already used with a different message');
-        return replay;
+        return { message: replay, branchId: conv.branchId, channelId: conv.channelId, conversationId: conv.id };
       }
 
       const channel = await this.repo.lockChannel(tx, p.orgId, conv.channelId);
@@ -245,13 +261,9 @@ export class WhatsappService {
         actorId: null, decision: 'allowed', blockedReason: null, gates: evaluation.gates,
       });
 
-      /* Update channel counters + conversation read-model in the SAME tx. */
-      const today = new Date().toISOString().slice(0, 10);
-      const sameDay = channel.sentTodayDate === today;
-      await this.repo.updateChannel(tx, p.orgId, channel.id, {
-        sentTodayCount: sameDay ? channel.sentTodayCount + 1 : 1,
-        sentTodayDate: today, lastSentAt: new Date(),
-      });
+      /* Queueing is not delivery. The send worker increments channel counters only
+       * after WAHA returns a durable external message ID. This avoids consuming
+       * the anti-ban quota for failed attempts or retries. */
       const convUpdate: Record<string, unknown> = { lastMessageAt: new Date() };
       if (!conv.firstResponseAt && conv.status === 'new') {
         convUpdate.firstResponseAt = new Date();
@@ -260,8 +272,16 @@ export class WhatsappService {
       await this.repo.updateConversation(tx, p.orgId, conv.id, convUpdate);
 
       await this.audit.record(this.auditEvent(p, 'wa_message_created', 'wa_messages', row.id, conv.branchId, undefined, { direction: 'out', senderType: 'human', status: 'queued' }), tx);
-      return row;
+
+      /* F-06: Return metadata for post-commit dispatch */
+      return { message: row as { id: string; [k: string]: unknown }, branchId: conv.branchId, channelId: channel.id, conversationId: conv.id };
       });
+
+    /* F-06: Post-commit enqueue — DB durable state committed first, then queue.
+     * If enqueue fails, reconcileQueuedMessages() recovers the stranded record. */
+    await this.dispatchQueuedMessage(result.message.id, p.orgId, result.branchId, result.channelId, result.conversationId);
+
+    return result.message;
     } catch (e) {
       /* Blocked-send compliance record: the business tx rolled back, so the
        * decision is persisted in a FRESH transaction (audit of a rejected
@@ -278,6 +298,173 @@ export class WhatsappService {
       }
       throw e;
     }
+  }
+
+  /** Post-commit enqueue — called AFTER the DB transaction commits.
+   *  If enqueue fails, the queued message remains durable for reconciliation. */
+  async dispatchQueuedMessage(messageId: string, orgId: string, branchId: string, channelId: string, conversationId: string) {
+    await this.queues?.enqueue('whatsapp-send', 'send-message', {
+      messageId,
+      orgId,
+      branchId,
+      channelId,
+      conversationId,
+      correlationId: getCorrelationId(),
+    }, messageId);
+  }
+
+  /** F-06: Scoped reconciliation — find stranded queued messages and re-enqueue.
+   *  Called by a periodic scheduler with explicit org+branch scope. */
+  async reconcileQueuedMessages(ctx: ScopedSystemWorkerContext, thresholdMinutes = 5) {
+    return this.dbCtx.runAsWorker(ctx, async (tx) => {
+      const cutoff = new Date(Date.now() - thresholdMinutes * 60_000);
+      const stranded = await tx.execute(
+        sql`SELECT id, org_id, branch_id, channel_id, conversation_id FROM wa_messages
+            WHERE org_id = ${ctx.orgId} AND branch_id = ${ctx.branchIds[0]!}
+              AND status = 'queued' AND created_at < ${cutoff} AND deleted_at IS NULL`,
+      );
+      const rows = (stranded as unknown as { rows: Array<{ id: string; org_id: string; branch_id: string; channel_id: string; conversation_id: string }> }).rows;
+      for (const row of rows) {
+        await this.queues?.enqueue('whatsapp-send', 'send-message', {
+          messageId: row.id, orgId: row.org_id, branchId: row.branch_id,
+          channelId: row.channel_id, conversationId: row.conversation_id,
+          correlationId: ctx.correlationId,
+        }, row.id);
+      }
+      return rows.length;
+    });
+  }
+
+  /** Called only after WAHA confirms a successful send. It is idempotent on
+   * externalMessageId and locks the channel before consuming the send quota. */
+  async confirmTransportSend(p: Principal, messageId: string, externalMessageId: string) {
+    return this.dbCtx.runAs(p, async (tx) => {
+      const message = await this.repo.findMessage(tx, p.orgId, messageId);
+      if (!message) throw new NotFoundError('waMessage', messageId);
+      this.branch(p, message.branchId);
+      if (message.externalMessageId) return message; // Retry/duplicate acknowledgement.
+      const channel = await this.repo.lockChannel(tx, p.orgId, message.channelId);
+      if (!channel) throw new NotFoundError('waChannel', message.channelId);
+      const now = this.nowFn();
+      const today = now.toISOString().slice(0, 10);
+      const count = channel.sentTodayDate === today ? channel.sentTodayCount : 0;
+      const updatedMessage = await this.repo.updateMessage(tx, p.orgId, messageId, { status: 'sent', externalMessageId, sentAt: now });
+      if (!updatedMessage) throw new NotFoundError('waMessage', messageId);
+      const nextCount = count + 1;
+      await this.repo.updateChannel(tx, p.orgId, channel.id, {
+        sentTodayCount: nextCount, sentTodayDate: today, lastSentAt: now,
+        autoPausedAt: nextCount % 25 === 0 ? now : channel.autoPausedAt,
+      });
+      await this.audit.record(this.auditEvent(p, 'wa_message_transport_sent', 'wa_messages', messageId, message.branchId, { status: message.status }, { status: 'sent', externalMessageId }), tx);
+      return updatedMessage;
+    });
+  }
+
+  /* ==========================================================================
+     T2 — WORKER TRANSPORT PATH (system worker, runAsWorker, RLS-enforced)
+     ==========================================================================*/
+
+  /** Mark message as processing. Returns the row for the worker to proceed. */
+  async markMessageProcessing(ctx: ScopedSystemWorkerContext, messageId: string) {
+    return this.dbCtx.runAsWorker(ctx, async (tx) => {
+      const msg = await this.repo.findMessage(tx, ctx.orgId, messageId);
+      if (!msg) throw new NotFoundError('waMessage', messageId);
+      if (msg.status !== 'queued') return msg; /* already processing/sent/failed */
+      const updated = await this.repo.updateMessage(tx, ctx.orgId, messageId, { status: 'processing' });
+      return updated ?? msg;
+    });
+  }
+
+  /** Worker-side confirm: idempotent, channel-locked, counter-safe. */
+  async confirmWorkerSend(ctx: ScopedSystemWorkerContext, messageId: string, externalMessageId: string) {
+    return this.dbCtx.runAsWorker(ctx, async (tx) => {
+      const msg = await this.repo.findMessage(tx, ctx.orgId, messageId);
+      if (!msg) throw new NotFoundError('waMessage', messageId);
+      if (msg.externalMessageId) return msg; /* duplicate success — no second increment */
+      const channel = await this.repo.lockChannel(tx, ctx.orgId, msg.channelId);
+      if (!channel) throw new NotFoundError('waChannel', msg.channelId);
+      if (channel.autoPausedAt) throw new Error('Channel auto-paused — worker must not send');
+      const now = this.nowFn();
+      const today = now.toISOString().slice(0, 10);
+      const count = channel.sentTodayDate === today ? channel.sentTodayCount : 0;
+      const updatedMsg = await this.repo.updateMessage(tx, ctx.orgId, messageId, { status: 'sent', externalMessageId, sentAt: now });
+      if (!updatedMsg) throw new NotFoundError('waMessage', messageId);
+      const nextCount = count + 1;
+      await this.repo.updateChannel(tx, ctx.orgId, channel.id, {
+        sentTodayCount: nextCount, sentTodayDate: today, lastSentAt: now,
+        autoPausedAt: nextCount % 25 === 0 ? now : channel.autoPausedAt,
+      });
+      await this.audit.record({
+        actorId: SYSTEM_WORKER_PRINCIPAL.staffId, actorRole: 'system_worker',
+        action: 'wa_message_transport_sent', entity: 'wa_messages', entityId: messageId,
+        orgId: ctx.orgId, branchId: msg.branchId, source: 'worker',
+        before: { status: msg.status }, after: { status: 'sent', externalMessageId },
+      }, tx);
+      return updatedMsg;
+    });
+  }
+
+  /** Worker-side failure: mark failed with reason (retry-safe; terminal). */
+  async markWorkerSendFailed(ctx: ScopedSystemWorkerContext, messageId: string, reason: string) {
+    return this.dbCtx.runAsWorker(ctx, async (tx) => {
+      const msg = await this.repo.findMessage(tx, ctx.orgId, messageId);
+      if (!msg) throw new NotFoundError('waMessage', messageId);
+      if (msg.externalMessageId) return msg; /* already sent — don't overwrite */
+      const updated = await this.repo.updateMessage(tx, ctx.orgId, messageId, { status: 'failed', lastError: reason });
+      await this.audit.record({
+        actorId: SYSTEM_WORKER_PRINCIPAL.staffId, actorRole: 'system_worker',
+        action: 'wa_message_transport_failed', entity: 'wa_messages', entityId: messageId,
+        orgId: ctx.orgId, branchId: msg.branchId, source: 'worker',
+        before: { status: msg.status }, after: { status: 'failed', lastError: reason },
+      }, tx);
+      return updated;
+    });
+  }
+
+  /** Validate channel scope ownership: channelId belongs to orgId + branchId. */
+  async validateChannelScope(ctx: ScopedSystemWorkerContext, channelId: string) {
+    return this.dbCtx.runAsWorker(ctx, async (tx) => {
+      const channel = await this.repo.findChannel(tx, ctx.orgId, channelId);
+      if (!channel) throw new NotFoundError('waChannel', channelId);
+      if (ctx.branchIds.length > 0 && !ctx.branchIds.includes(channel.branchId)) {
+        throw new ForbiddenError('Channel belongs to a different branch than worker scope');
+      }
+      return channel;
+    });
+  }
+
+  /** Worker-side conversation lookup — RLS-scoped, validates org+branch ownership. */
+  async getWorkerConversation(ctx: ScopedSystemWorkerContext, conversationId: string) {
+    return this.dbCtx.runAsWorker(ctx, async (tx) => {
+      const conv = await this.repo.findConversation(tx, ctx.orgId, conversationId);
+      if (!conv) return null;
+      if (ctx.branchIds.length > 0 && !ctx.branchIds.includes(conv.branchId)) return null;
+      return conv;
+    });
+  }
+
+  /** N6-3: auto-resume a channel whose pause has expired. */
+  async autoResumeExpiredChannels(ctx: ScopedSystemWorkerContext) {
+    return this.dbCtx.runAsWorker(ctx, async (tx) => {
+      const now = this.nowFn();
+      const cutoff = new Date(now.getTime() - WA_AUTO_PAUSE_MS);
+      const expired = await tx.execute(
+        sql`SELECT id, branch_id, auto_paused_at FROM wa_channels
+            WHERE org_id = ${ctx.orgId} AND auto_paused_at IS NOT NULL
+              AND auto_paused_at <= ${cutoff} AND deleted_at IS NULL`,
+      );
+      const rows = (expired as unknown as { rows: Array<{ id: string; branch_id: string; auto_paused_at: Date }> }).rows;
+      for (const row of rows) {
+        await this.repo.updateChannel(tx, ctx.orgId, row.id, { autoPausedAt: null, autoPauseResumedAt: now });
+        await this.audit.record({
+          actorId: SYSTEM_WORKER_PRINCIPAL.staffId, actorRole: 'system_worker',
+          action: 'wa_channel_auto_pause_expired', entity: 'wa_channels', entityId: row.id,
+          orgId: ctx.orgId, branchId: row.branch_id, source: 'worker',
+          before: { autoPausedAt: row.auto_paused_at }, after: { autoPauseResumedAt: now },
+        }, tx);
+      }
+      return rows.length;
+    });
   }
 
   /** Simulated delivery-state progression (no real transport; S8 owns delivery). */
@@ -451,7 +638,21 @@ export class WhatsappService {
     });
   }
 
-  /* ==========================================================================
+  /** N6-3: clear a channel-local pause under the same row lock used by sends. */
+  async resumeAutoPause(p: Principal, id: string) {
+    return this.dbCtx.runAs(p, async (tx) => {
+      const channel = await this.repo.lockChannel(tx, p.orgId, id);
+      if (!channel) throw new NotFoundError('waChannel', id);
+      this.branch(p, channel.branchId);
+      if (p.role !== 'hq' && p.role !== 'branch_manager') throw new ForbiddenError('Only HQ or branch manager can resume safety pause');
+      const at = this.nowFn();
+      const updated = await this.repo.updateChannel(tx, p.orgId, id, { autoPausedAt: null, autoPauseResumedAt: at });
+      await this.audit.record(this.auditEvent(p, 'wa_channel_auto_pause_resumed', 'wa_channels', id, channel.branchId, { autoPausedAt: channel.autoPausedAt }, { autoPauseResumedAt: at }), tx);
+      return updated;
+    });
+  }
+
+  /* ============================================================================
      SAFETY DECISIONS + DEVICE HEALTH (read surfaces)
      ==========================================================================*/
   async listSafetyDecisions(p: Principal, branchId?: string, rawPage?: unknown) {

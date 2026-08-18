@@ -61,6 +61,7 @@ function withBranchContext<T>(
 ): Promise<T> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('app.role', 'branch_manager', true)`);
+    await tx.execute(sql`SELECT set_config('app.org_id', ${ORG_A}, true)`);
     await tx.execute(sql`SELECT set_config('app.branch_ids', ${branchId}, true)`);
     return fn(tx);
   });

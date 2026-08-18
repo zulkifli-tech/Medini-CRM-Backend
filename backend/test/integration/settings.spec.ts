@@ -183,6 +183,7 @@ describe('S7 Settings — registry + inheritance + overrides + SecretRef (unique
     try {
       /* doctor: read allowed (definitions policy), write denied by WITH CHECK */
       await client.query(`SELECT set_config('app.role','doctor',false)`);
+      await client.query(`SELECT set_config('app.org_id','${TEST_ORG}',false)`);
       await client.query(`SELECT set_config('app.branch_ids','${s.b1}',false)`);
       const read = await client.query(`SELECT count(*)::int AS n FROM settings_definitions WHERE org_id='${TEST_ORG}'`);
       expect(read.rows[0]!.n).toBe(1);

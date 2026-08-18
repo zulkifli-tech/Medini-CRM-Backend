@@ -9,7 +9,23 @@ import { FinanceIntegrationService } from './application/finance-integration.ser
 import { FinanceCoreRepository } from './infrastructure/finance-core.repository';
 import { FinanceClinicalRepository } from './infrastructure/finance-clinical.repository';
 import { FinanceIntegrationRepository } from './infrastructure/finance-integration.repository';
+import { BukkuAdapter } from './infrastructure/bukku.adapter';
+import { BukkuWorker } from './infrastructure/bukku.worker';
+import { AccountingPort } from '../../shared/ports/accounting.port';
 import { FinanceReadPort } from '../../shared/ports/finance.read-port';
+import { RECOVERY_SWEEP, RecoverySweep } from '../../infrastructure/outbox/recovery.scheduler';
+
+/** F-08 (Bukku): re-enqueue sync records stranded when Redis was down after
+ *  the durable commit — driven by the central recovery scheduler's tick. */
+const BUKKU_RECOVERY_SWEEP = {
+  provide: RECOVERY_SWEEP,
+  useFactory: (integration: FinanceIntegrationService): RecoverySweep => ({
+    name: 'bukku-reconcile-pending',
+    run: (ctx) => integration.reconcilePendingSyncs(ctx),
+  }),
+  inject: [FinanceIntegrationService],
+  multi: true,
+};
 
 /**
  * FinanceModule — Sprint 4 Finance core. Operational financial records +
@@ -27,6 +43,9 @@ import { FinanceReadPort } from '../../shared/ports/finance.read-port';
     ClinicalFinanceService, FinanceClinicalRepository,
     FinanceIntegrationService, FinanceIntegrationRepository,
     FinanceReadPort,
+    { provide: AccountingPort, useClass: BukkuAdapter },
+    BukkuWorker,
+    BUKKU_RECOVERY_SWEEP,
   ],
   exports: [FinanceService, ClinicalFinanceService, FinanceIntegrationService, FinanceReadPort],
 })

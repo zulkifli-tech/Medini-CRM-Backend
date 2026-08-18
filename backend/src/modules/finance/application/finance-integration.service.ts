@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
-import { DbContextService } from '../../../core/auth/db-context.service';
+import { sql } from 'drizzle-orm';
+import { DbContextService, ScopedSystemWorkerContext } from '../../../core/auth/db-context.service';
 import { AuditService } from '../../../shared/audit/audit.service';
 import { Principal } from '../../../core/auth/principal';
 import {
@@ -9,8 +10,10 @@ import {
 import { FinanceIntegrationRepository } from '../infrastructure/finance-integration.repository';
 import { OrgAllocator } from '../../../shared/allocators/org-allocator';
 import {
-  AccountingPort, UnconfiguredAccountingAdapter,
+  AccountingPort,
 } from '../../../shared/ports/accounting.port';
+import { QueueRegistry } from '../../../infrastructure/queue/queue.registry';
+import { getCorrelationId } from '../../../shared/correlation/correlation';
 import {
   ExternalInvoiceRef, BukkuSyncRecord, ReconciliationRecord,
 } from '../../../infrastructure/database/schema';
@@ -34,6 +37,7 @@ const createExternalRefSchema = z.object({
 const enqueueSyncSchema = z.object({
   entityType: z.string().trim().min(1).max(64),
   entityId: z.string().uuid(),
+  branchId: z.string().uuid().nullish(),
 });
 
 const resolveReconciliationSchema = z.object({
@@ -62,9 +66,10 @@ export class FinanceIntegrationService {
     private readonly dbCtx: DbContextService,
     private readonly repo: FinanceIntegrationRepository,
     private readonly audit: AuditService,
+    private readonly queues: QueueRegistry,
+    accounting: AccountingPort,
   ) {
-    /* S4 boundary: real adapter not wired until Sprint 8. */
-    this.accounting = new UnconfiguredAccountingAdapter();
+    this.accounting = accounting;
   }
 
   private assertHq(p: Principal): void {
@@ -139,19 +144,68 @@ export class FinanceIntegrationService {
     if (!parsed.success) throw this.validation(parsed);
     const input = parsed.data;
 
-    return this.dbCtx.runAs(principal, async (tx) => {
+    /* F-07: durable record commits FIRST; the queue enqueue happens
+     * post-commit so no Redis call is made while holding the DB tx. */
+    const homeBranch = await this.resolveHomeBranch(principal);
+    const rec = await this.dbCtx.runAs(principal, async (tx) => {
       const existing = await this.repo.findSyncByEntity(tx, principal.orgId, input.entityType, input.entityId);
       if (existing) return existing; /* idempotent — already enqueued */
       const idempotencyKey = `medini:${input.entityType}:${input.entityId}:push:v1`;
-      const rec = await this.repo.enqueueSync(tx, principal.orgId, { ...input, idempotencyKey });
+      const created = await this.repo.enqueueSync(tx, principal.orgId, { ...input, branchId: input.branchId ?? homeBranch, idempotencyKey });
       await this.audit.record({
         actorId: principal.staffId, actorRole: principal.role,
-        action: 'bukku_sync_enqueued', entity: 'bukku_sync_records', entityId: rec.id,
+        action: 'bukku_sync_enqueued', entity: 'bukku_sync_records', entityId: created.id,
         orgId: principal.orgId, branchId: null, source: 'api',
-        after: { entityType: rec.entityType, entityId: rec.entityId, status: rec.syncStatus },
+        after: { entityType: created.entityType, entityId: created.entityId, status: created.syncStatus },
       }, tx);
-      return rec;
+      return created;
     });
+
+    /* F-02: post-commit enqueue. If Redis is down the record stays 'queued'
+     * and is picked up by the periodic reconciliation sweep. */
+    await this.queues.enqueue('bukku-sync', 'push-sync', {
+      syncId: rec.id,
+      orgId: principal.orgId,
+      branchId: rec.branchId ?? input.branchId ?? homeBranch,
+      correlationId: getCorrelationId(),
+    }, rec.id);
+
+    return rec;
+  }
+
+  /** Resolve the org's home branch (first active branch) for scoping
+   *  org-level Bukku sync work. Read under the caller's own RLS context. */
+  private async resolveHomeBranch(principal: Principal): Promise<string | null> {
+    return this.dbCtx.runAs(principal, async (tx) => {
+      const rows = await tx.execute(
+        sql`SELECT id::text AS id FROM branches WHERE org_id = ${principal.orgId} AND deleted_at IS NULL ORDER BY code LIMIT 1`,
+      );
+      return (rows as unknown as { rows: Array<{ id: string }> }).rows[0]?.id ?? null;
+    });
+  }
+
+  /** F-08 recovery sweep: re-enqueue Bukku sync records that are still
+   *  'queued' or retryable 'error' (e.g. the post-commit enqueue was lost
+   *  when Redis was down). BullMQ jobId = sync record id dedupes repeats. */
+  async reconcilePendingSyncs(ctx: ScopedSystemWorkerContext): Promise<number> {
+    const pending = await this.dbCtx.runAsWorker(ctx, async (tx) => {
+      const rows = await tx.execute(
+        sql`SELECT id::text AS id, org_id::text AS org_id, branch_id::text AS branch_id
+            FROM bukku_sync_records
+            WHERE org_id = ${ctx.orgId}
+              AND sync_status IN ('queued', 'error') AND COALESCE(retry_count, 0) < 5`,
+      );
+      return (rows as unknown as { rows: Array<{ id: string; org_id: string; branch_id: string | null }> }).rows;
+    });
+    let enqueued = 0;
+    for (const row of pending) {
+      const branchId = row.branch_id ?? ctx.branchIds[0] ?? null;
+      await this.queues.enqueue('bukku-sync', 'push-sync', {
+        syncId: row.id, orgId: row.org_id, branchId, correlationId: ctx.correlationId,
+      }, row.id);
+      enqueued += 1;
+    }
+    return enqueued;
   }
 
   /**

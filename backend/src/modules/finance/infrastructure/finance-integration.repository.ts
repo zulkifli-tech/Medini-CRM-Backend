@@ -68,13 +68,14 @@ export class FinanceIntegrationRepository {
 
   /* ================= BUKKU_SYNC_RECORDS ================= */
   async enqueueSync(tx: DbClient, orgId: string, input: {
-    entityType: string; entityId: string; idempotencyKey: string;
+    entityType: string; entityId: string; idempotencyKey: string; branchId?: string | null;
   }): Promise<BukkuSyncRecord> {
     try {
       const rows = await tx.insert(bukkuSyncRecords).values({
         orgId,
         entityType: input.entityType,
         entityId: input.entityId,
+        branchId: input.branchId ?? null,
         idempotencyKey: input.idempotencyKey,
         syncStatus: 'queued',
       }).returning();

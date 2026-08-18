@@ -17,6 +17,8 @@ import { getCorrelationId } from '../../../shared/correlation/correlation';
 import { DATABASE } from '../../../infrastructure/database/database.module';
 import { Database } from '../../../infrastructure/database/database';
 import { domainEvents, TreatmentPlan, TreatmentPlanItem, TreatmentSession } from '../../../infrastructure/database/schema';
+import { ScopedOutboxDispatcher } from '../../../infrastructure/outbox/outbox.dispatcher';
+import { ScopedOutboxEvent } from '../../../infrastructure/outbox/outbox.types';
 
 const createPlanSchema = z.object({
   patientId: z.string().uuid(),
@@ -68,6 +70,7 @@ export class PlansService {
     private readonly patients: PatientsReadPort,
     private readonly audit: AuditService,
     @Inject(DATABASE) private readonly db: Database | null,
+    private readonly dispatcher?: ScopedOutboxDispatcher,
   ) {}
 
   private validation(parsed: { success: false; error: { issues: Array<{ path: (string | number)[]; message: string }> } }) {
@@ -89,13 +92,14 @@ export class PlansService {
     }
   }
 
-  /** Outbox emit (same tx) — contract events only; no consumers in Sprint 3. */
-  private async emit(tx: Database, p: Principal, branchId: string, eventType: string, data: Record<string, unknown>): Promise<void> {
-    await tx.insert(domainEvents).values({
-      orgId: p.orgId, branchId, eventType,
-      payload: { ...data },
-      correlationId: getCorrelationId(),
-    });
+  /** Persists the source-of-truth event in the business transaction. Dispatch is
+   * deliberately post-commit; recovery re-enqueues an unpublished event safely. */
+  private async emit(tx: Database, p: Principal, branchId: string, eventType: string, data: Record<string, unknown>): Promise<ScopedOutboxEvent> {
+    const correlationId = getCorrelationId();
+    const [row] = await tx.insert(domainEvents).values({
+      orgId: p.orgId, branchId, eventType, payload: { ...data }, correlationId,
+    }).returning();
+    return { eventId: row!.id, eventType, orgId: p.orgId, branchId, correlationId, source: 'domain', payload: data };
   }
 
   async create(principal: Principal, raw: unknown): Promise<{ plan: TreatmentPlan; items: TreatmentPlanItem[] }> {
@@ -192,14 +196,14 @@ export class PlansService {
     if (!parsed.success) throw this.validation(parsed);
     const target = parsed.data.status;
 
-    return this.dbCtx.runAs(principal, async (tx) => {
+    const committed = await this.dbCtx.runAs(principal, async (tx) => {
       const before = await this.core.findPlanById(tx, principal.orgId, id);
       if (!before) throw new NotFoundError('TreatmentPlan', id);
       if (before.doctorId !== principal.doctorId) throw new NotFoundError('TreatmentPlan', id);
       if (!canTransitionPlan(before.status, target)) {
         throw new ConflictError(`Illegal transition ${before.status} → ${target}`);
       }
-      if (before.status === target) return before; /* no-op: no mutation/audit/event */
+      if (before.status === target) return { updated: before, event: null }; /* no-op: no mutation/audit/event */
 
       /* Consent gate: consent_required plans need a consent record first. */
       if (target === 'accepted') {
@@ -241,21 +245,26 @@ export class PlansService {
         actorId: principal.staffId, actorRole: principal.role, correlationId: getCorrelationId(),
       });
 
-      /* Contract events (emit-only — CROSS_DOMAIN_EVENTS; no consumers yet). */
+      let event: ScopedOutboxEvent | null = null;
       if (target === 'active') {
-        await this.emit(tx as unknown as Database, principal, before.branchId, 'TREATMENT_STARTED', {
+        event = await this.emit(tx as unknown as Database, principal, before.branchId, 'TREATMENT_STARTED', {
           planId: id, planCode: before.planCode, patientId: before.patientId,
           doctorId: before.doctorId, encounterId: before.encounterId,
         });
       }
       if (target === 'completed') {
-        await this.emit(tx as unknown as Database, principal, before.branchId, 'TREATMENT_COMPLETED', {
+        event = await this.emit(tx as unknown as Database, principal, before.branchId, 'TREATMENT_COMPLETED', {
           planId: id, planCode: before.planCode, patientId: before.patientId,
           doctorId: before.doctorId, encounterId: before.encounterId,
         });
       }
-      return updated;
+      return { updated, event };
     });
+    if (committed.event) {
+      try { await this.dispatcher?.dispatch(committed.event); }
+      catch { /* Committed event remains unpublished; scoped recovery re-enqueues it. */ }
+    }
+    return committed.updated;
   }
 
   async addItem(principal: Principal, planId: string, raw: unknown): Promise<TreatmentPlanItem> {

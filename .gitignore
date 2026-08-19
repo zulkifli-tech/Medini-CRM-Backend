@@ -21,3 +21,4 @@ Thumbs.db
 app/smoke-shots/
 _archive/
 *.tsbuildinfo
+staging.env

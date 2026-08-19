@@ -261,7 +261,9 @@ Secondary modules (AI Manager, Documents, Marketing, Operations, Settings, Whats
 
 ## 17. Commit Hash
 
-_To be filled after the commit is created and verified (local == origin, CI green)._
+`3437dac3a57a8c36d9d692e4e378169dba3154b0` — `feat(crm): S10 T1 production frontend integration + user lifecycle`
+- Local == origin/main: ✅ verified (`git rev-parse HEAD` == `git rev-parse origin/main`)
+- GitHub CI: API returned 404 (private repo — token scope). Push confirmed landed via `git ls-remote`. **Check Actions tab manually** to confirm the migrate loop (now incl. 0025) + 487-test suite are green.
 
 ---
 

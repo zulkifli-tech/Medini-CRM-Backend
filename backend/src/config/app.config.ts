@@ -10,4 +10,6 @@ export default registerAs('app', () => ({
   apiPrefix: process.env.API_PREFIX ?? 'api',
   apiVersion: process.env.API_VERSION ?? 'v1',
   isProd: (process.env.NODE_ENV ?? 'development') === 'production',
+  /** Comma-separated allowed CORS origins (production frontend). Empty = same-origin only. */
+  corsOrigin: process.env.CORS_ORIGIN ?? '',
 }));

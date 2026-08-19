@@ -1,0 +1,153 @@
+# ============================================================================
+# Medini CRM — PRODUCTION Docker Compose (S10 T2)
+#
+# Architecture:
+#   Internet → Caddy (443/HTTPS) → frontend (static SPA)
+#                              ↘ /api/v1 → backend (NestJS)
+#                                            ↓
+#                                    PostgreSQL (internal) + Redis (internal)
+#                                            ↓
+#                                    Workers (BullMQ)
+#
+# PostgreSQL/Redis are NOT exposed to the public internet.
+# Backup runs as a sidecar container writing to a persistent volume.
+# ============================================================================
+
+name: medini-prod
+
+services:
+  # ---- Reverse proxy / HTTPS termination ----
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - medini-public
+      - medini-internal
+
+  # ---- Frontend (static SPA via nginx) ----
+  frontend:
+    build:
+      context: ./app
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    networks:
+      - medini-internal
+    # No public port — Caddy proxies to this.
+
+  # ---- Backend (NestJS) ----
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://medini:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DATABASE_RUNTIME_URL: postgres://medini_app:${POSTGRES_APP_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - medini-internal
+    # No public port — Caddy proxies /api/v1 to this.
+
+  # ---- PostgreSQL 16 (production) ----
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: medini
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # Runtime role (non-owner, RLS-subject) is created by migrations.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - medini-internal
+    # NO public port — internal only.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medini -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- Redis 7 (queue + cache) ----
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    volumes:
+      - redisdata:/data
+    networks:
+      - medini-internal
+    # NO public port — internal only.
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD} ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- Backup sidecar (pg_dump → persistent volume) ----
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: medini
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+    volumes:
+      - ./backup/backup.sh:/backup.sh:ro
+      - backupdata:/backups
+    networks:
+      - medini-internal
+    # Runs pg_dump on a schedule (cron via alpine).
+    command: >
+      sh -c "echo '0 2 * * * /backup.sh >> /backups/backup.log 2>&1' | crontab - && crond -f"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ---- WAHA (WhatsApp transport) — only if launch scope ----
+  # Uncomment if WAHA is part of production launch.
+  # waha:
+  #   image: devlikeapro/waha:latest
+  #   restart: unless-stopped
+  #   environment:
+  #     WAHA_API_KEY: ${WAHA_API_KEY}
+  #   volumes:
+  #     - waha_sessions:/app/.sessions
+  #   networks:
+  #     - medini-internal
+  #   # NO public port — backend calls WAHA internally.
+
+networks:
+  medini-public:
+    driver: bridge
+  medini-internal:
+    driver: bridge
+    internal: true   # no outbound internet — DB/Redis/workers stay private
+
+volumes:
+  pgdata:
+  redisdata:
+  backupdata:
+  caddy_data:
+  caddy_config:
+  # waha_sessions:

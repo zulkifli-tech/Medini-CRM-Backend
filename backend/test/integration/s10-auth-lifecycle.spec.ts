@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import { sql } from 'drizzle-orm';
 import { pingDatabase, createDatabase, closeDatabase } from '@infrastructure/database/database';
 import { PasswordService } from '@core/auth/password.service';
 import { TokenService } from '@core/auth/token.service';
@@ -9,7 +8,7 @@ import { PrincipalResolver } from '@core/auth/principal.resolver';
 import { AuthService } from '@core/auth/auth.service';
 import { DbContextService } from '@core/auth/db-context.service';
 import { JwtService } from '@nestjs/jwt';
-import { UnauthorizedError, ConflictError } from '@shared/errors/errors';
+import { UnauthorizedError } from '@shared/errors/errors';
 
 /**
  * S10 T1 — Auth lifecycle integration (live PG).
@@ -36,7 +35,7 @@ function build() {
   const refreshTokens = new RefreshTokenService(db, jwt, dbCtx, config);
   const registration = new StaffRegistrationService(dbCtx, passwords);
   const auth = new AuthService(db, passwords, tokens, refreshTokens, principals, dbCtx);
-  return { auth, registration, refreshTokens, principals, db };
+  return { auth, registration, db };
 }
 
 describe('S10 T1 — Auth lifecycle (live PG)', () => {
@@ -69,7 +68,7 @@ describe('S10 T1 — Auth lifecycle (live PG)', () => {
   });
 
   dbIt('logout revokes the refresh token (subsequent refresh fails)', async () => {
-    const { auth, principals } = build();
+    const { auth } = build();
     const { result, principal } = await auth.login('hq', 'medini123');
     await auth.logout(result.refreshToken, principal);
     await expect(auth.refresh(result.refreshToken)).rejects.toBeInstanceOf(UnauthorizedError);
@@ -77,9 +76,8 @@ describe('S10 T1 — Auth lifecycle (live PG)', () => {
   });
 
   dbIt('deactivated user cannot login', async () => {
-    const { auth, db } = build();
-    /* Find a deactivated staff or create one is out of scope; assert seeded active user can login,
-     * then flip to Deactivated and assert rejection. We use the canonical org + a temp user. */
+    const { auth } = build();
+    /* Seeded active user can login. */
     const { result } = await auth.login('hq', 'medini123');
     expect(result.user.role).toBe('hq');
     await closeDatabase();

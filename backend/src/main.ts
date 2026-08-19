@@ -32,8 +32,13 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
-  /* CORS — restrictive by default; tighten per environment at deploy. */
-  app.enableCors({ origin: false, credentials: true });
+  /* CORS — production: allow the explicit frontend origin only.
+   * CORS_ORIGIN env (comma-separated) overrides; defaults to same-origin (false). */
+  const corsOrigin = config.get<string>('app.corsOrigin');
+  app.enableCors({
+    origin: corsOrigin ? corsOrigin.split(',').map((o) => o.trim()) : false,
+    credentials: true,
+  });
 
   /* OpenAPI foundation (bearer auth scheme pre-registered for later sprints). */
   const docConfig = new DocumentBuilder()

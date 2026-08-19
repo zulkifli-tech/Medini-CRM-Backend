@@ -248,7 +248,9 @@ Backend integration tests (T3, live PG): Patient CRUD, Appointment flow, Reports
 
 ## 26. Commit Hashes
 
-_To be filled after the T4 checkpoint commit._
+- `696ebae6ca9a7d79f3c0cbef9515246a6482dc00` — `feat(release): S10 T4 staging + production go-live readiness`
+- Local == origin/main: ✅ verified
+- This is a **checkpoint commit**, NOT the final S10 GitHub lock (per governance §17).
 
 ---
 

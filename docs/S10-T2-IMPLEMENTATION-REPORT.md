@@ -256,7 +256,9 @@ pg_dump medini_dev → gzip (125K)
 
 ## 24. Commit Hashes
 
-_To be filled after the T2 commit is created (checkpoint commit, not the final GitHub lock)._
+- `d63b741c61c981dffb42cf039915580d0f692f6f` — `feat(infra): S10 T2 production foundation`
+- Local == origin/main: ✅ verified (`git rev-parse HEAD` == `git rev-parse origin/main`)
+- This is a **checkpoint commit**, NOT the final S10 GitHub lock (per governance §28 — official finalization happens after T3/T4 + GLM audit + governance approval).
 
 ---
 

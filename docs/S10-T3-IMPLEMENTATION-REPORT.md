@@ -254,7 +254,9 @@ All three findings remediated with **minimal, additive, evidence-based changes**
 
 ## 31. Commit Hashes
 
-_To be filled after the T3 checkpoint commit is created._
+- `054a49a99fb9c1d2b80bb270dca306402f5cc6fc` — `feat(security): S10 T3 security + full E2E validation`
+- Local == origin/main: ✅ verified
+- This is a **checkpoint commit**, NOT the final S10 GitHub lock (per governance §36).
 
 ---
 

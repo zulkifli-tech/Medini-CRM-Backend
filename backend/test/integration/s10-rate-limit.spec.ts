@@ -47,8 +47,12 @@ describe('S10-05 — Rate limiting E2E (compiled app, real HTTP)', () => {
   beforeAll(async () => {
     const distMain = resolve(__dirname, '../../dist/main.js');
     if (!existsSync(distMain)) throw new Error('dist/main.js missing — run `npm run build` first');
+    /* Trust-proxy model (S10 GLM trust-proxy remediation): the test client
+     * connects from 127.0.0.1 — modeling the Caddy edge proxy in production.
+     * With TRUSTED_PROXIES=127.0.0.1 the app honors X-Forwarded-For the way
+     * it will behind the real proxy. */
     proc = spawn(process.execPath, [distMain], {
-      env: { ...process.env, PORT: String(PORT), NODE_ENV: 'test' },
+      env: { ...process.env, PORT: String(PORT), NODE_ENV: 'test', TRUSTED_PROXIES: '127.0.0.1' },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     proc.stderr?.on('data', (d) => { stderr += d.toString(); });
@@ -78,5 +82,20 @@ describe('S10-05 — Rate limiting E2E (compiled app, real HTTP)', () => {
     const codes: number[] = [];
     for (let i = 0; i < 10; i++) codes.push(await get('/health/live'));
     expect(codes.filter((c) => c === 200).length).toBe(10);
+  });
+
+  it('TRUST-PROXY: client-supplied XFF cannot bypass the limit (rightmost wins)', async () => {
+    /* Attacker behind the trusted proxy spoofs XFF entries to rotate the
+     * bucket key. The guard uses the RIGHTMOST entry — the one the trusted
+     * proxy appended — so rotation via left-side entries must NOT work.
+     * Model: proxy appends 203.0.113.90; attacker prepends fakes. */
+    const codes: number[] = [];
+    for (let i = 0; i < 7; i++) {
+      codes.push(await post('/api/v1/auth/login', { username: 'nobody', password: 'wrongpass1' }, `10.0.0.${i}, 203.0.113.90`));
+    }
+    /* Same real client (203.0.113.90) → 429 from the 6th request on. */
+    expect(codes.slice(0, 5)).toEqual([401, 401, 401, 401, 401]);
+    expect(codes[5]).toBe(429);
+    expect(codes[6]).toBe(429);
   });
 });

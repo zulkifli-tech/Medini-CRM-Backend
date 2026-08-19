@@ -60,10 +60,13 @@ describe('S10-05 — AuthThrottlerGuard', () => {
     expect(await (guard as unknown as { shouldSkip: (c: unknown) => Promise<boolean> }).shouldSkip(ctx)).toBe(false);
   });
 
-  it('tracks by client IP including X-Forwarded-For first hop', async () => {
+  it('tracks by client IP; XFF honored only from trusted proxies (rightmost wins)', async () => {
     const getTracker = (guard as unknown as { getTracker: (r: Record<string, any>) => Promise<string> }).getTracker.bind(guard);
-    expect(await getTracker({ headers: { 'x-forwarded-for': '9.9.9.9, 10.0.0.1' }, socket: { remoteAddress: '10.0.0.1' } })).toBe('auth:9.9.9.9');
+    /* Peer 10.0.0.1 is NOT trusted → client-supplied XFF ignored → peer IP. */
+    expect(await getTracker({ headers: { 'x-forwarded-for': '9.9.9.9, 10.0.0.1' }, socket: { remoteAddress: '10.0.0.1' } })).toBe('auth:10.0.0.1');
+    /* No XFF → socket IP. */
     expect(await getTracker({ headers: {}, socket: { remoteAddress: '127.0.0.1' } })).toBe('auth:127.0.0.1');
+    /* Nothing → unknown. */
     expect(await getTracker({ headers: {}, socket: {} })).toBe('auth:unknown');
   });
 

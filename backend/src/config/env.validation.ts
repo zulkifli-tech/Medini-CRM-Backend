@@ -36,6 +36,10 @@ export const envSchema = z.object({
   /* S10 GLM R3: invitation link origin — server config ONLY (never request
    * Host header / body). Defaults to the dev frontend. */
   APP_PUBLIC_BASE_URL: z.string().default('http://localhost:5173'),
+  /* S10 GLM trust-proxy remediation: comma-separated IPs/CIDRs allowed to
+   * supply X-Forwarded-For for rate limiting. Empty = trust nobody (XFF
+   * ignored; socket peer used). Must list the Caddy/edge proxy in prod. */
+  TRUSTED_PROXIES: z.string().default(''),
 
   LOG_LEVEL: z.string().default('info'),
 });

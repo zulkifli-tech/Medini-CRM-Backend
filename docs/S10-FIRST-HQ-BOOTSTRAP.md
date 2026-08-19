@@ -22,7 +22,7 @@ and **no backdoors**. Read fully before executing.
 
 ## 2. Preconditions
 
-- [ ] Production DB migrated 0000 → 0027 (clean replay verified).
+- [ ] Production DB migrated 0000 → 0028 (clean replay verified).
 - [ ] `APP_PUBLIC_BASE_URL` set to the real frontend origin (https).
 - [ ] Secrets (`JWT_SECRET`, `JWT_REFRESH_SECRET`, `DATABASE_URL`) injected via
       the secret manager — never committed.

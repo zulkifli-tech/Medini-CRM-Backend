@@ -10,9 +10,24 @@ import type { ThrottlerRequest } from '@nestjs/throttler';
  * Authenticated business routes are unaffected — shouldSkip() returns true
  * for any route without an explicit @Throttle(...) named-limit override.
  *
- * Tracker identity: client IP. We sit behind the Docker edge proxy in
- * production, so X-Forwarded-For (leftmost entry) is used when present.
- * The value is only a rate-limit bucket key — never authenticated as identity.
+ * Trusted-proxy model (GLM 5.3 remediation, D-07 trust proxy):
+ *   The backend MUST sit behind a trusted reverse proxy (Caddy) in
+ *   production. Client-supplied X-Forwarded-For is UNTRUSTED by default:
+ *   an attacker can prepend arbitrary IPs, so "leftmost XFF entry" lets
+ *   them rotate buckets and bypass the rate limit.
+ *
+ *   TRUSTED_PROXIES (comma-separated CIDRs/IPs, env) defines which direct
+ *   peers are allowed to supply forwarding headers:
+ *     - empty/unset (default): X-Forwarded-For is IGNORED entirely — the
+ *       socket address is the tracker. Safe behind an unlisted proxy too
+ *       (all proxy clients then share ONE bucket — fail-safe, not fail-open).
+ *     - set: the header is honored ONLY when the socket peer is listed;
+ *       the RIGHTMOST untrusted entry is then the real client (the proxy
+ *       appends the peer it saw; anything left of it is client-supplied).
+ *
+ *   Caddy's default reverse_proxy sets X-Forwarded-For = client IP it saw,
+ *   appending to any client-supplied value — so rightmost-untrusted is the
+ *   address Caddy actually observed, immune to left-side spoofing.
  *
  * Named limits (see AuthController decorators):
  *   auth-login    : 5 requests / minute / IP
@@ -27,13 +42,6 @@ import type { ThrottlerRequest } from '@nestjs/throttler';
 export class AuthThrottlerGuard extends ThrottlerGuard {
   /** Only throttle routes that declare a named throttler via @Throttle(). */
   protected async shouldSkip(_context: ExecutionContext): Promise<boolean> {
-    /* canActivate() iterates this.throttlers (the module-level named list).
-     * A route without a @Throttle override inherits the module default —
-     * so we register the guard with NO default throttler; every named
-     * limit comes from the route decorator. Routes with no decorator
-     * therefore skip entirely. The named overrides only apply when the
-     * route decorator defines them (getAllAndOverride returns undefined
-     * otherwise), so we skip routes carrying no THROTTLER_LIMIT metadata. */
     const handler = _context.getHandler();
     const classRef = _context.getClass();
     for (const named of this.throttlers) {
@@ -46,11 +54,74 @@ export class AuthThrottlerGuard extends ThrottlerGuard {
     return true; /* no @Throttle on this route → skip */
   }
 
-  /** IP-based tracker; proxy-aware, prefix per-request for bucketing. */
+  /**
+   * Parse TRUSTED_PROXIES into a list of exact IPs / IPv4 CIDRs. Cached —
+   * env is read once per process. Empty string → [] (trust nobody).
+   */
+  private static readonly trustedProxies: readonly string[] = (() => {
+    const raw = (process.env.TRUSTED_PROXIES ?? '').trim();
+    if (!raw) return [];
+    return raw.split(',').map((e) => e.trim()).filter(Boolean);
+  })();
+
+  /** Exact IP or IPv4 CIDR membership test. */
+  private static peerIsTrusted(peer: string, proxies: readonly string[]): boolean {
+    if (!peer) return false;
+    /* Normalize IPv6-mapped IPv4 (::ffff:10.0.0.1 → 10.0.0.1). */
+    const ip = peer.startsWith('::ffff:') ? peer.slice(7) : peer;
+    for (const entry of proxies) {
+      if (entry === ip) return true;
+      if (entry.includes('/')) {
+        const [base, bitsStr] = entry.split('/');
+        const bits = Number(bitsStr);
+        if (!base || !Number.isInteger(bits) || bits < 0 || bits > 32) continue;
+        const toInt = (v: string): number | null => {
+          const parts = v.split('.');
+          if (parts.length !== 4) return null;
+          let n = 0;
+          for (const p of parts) {
+            const o = Number(p);
+            if (!Number.isInteger(o) || o < 0 || o > 255) return null;
+            n = (n << 8) | o;
+          }
+          return n >>> 0;
+        };
+        const a = toInt(ip);
+        const b = toInt(base);
+        if (a === null || b === null) continue;
+        const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+        if ((a & mask) === (b & mask)) return true;
+      }
+    }
+    return false;
+  }
+
+  /** Resolve the real client IP under the trusted-proxy model. */
+  private static resolveClientIp(req: Record<string, any>): string {
+    const peer: string = req.socket?.remoteAddress ?? '';
+    const proxies = AuthThrottlerGuard.trustedProxies;
+    const xff = ((req.headers?.['x-forwarded-for'] ?? '') as string).trim();
+    if (proxies.length === 0 || !xff) {
+      /* No trusted proxies configured (or no header): use the socket peer.
+       * Behind an unconfigured proxy this means one shared bucket —
+       * fail-safe: attacks are still limited, legit users unaffected per-IP
+       * only when the proxy is listed. */
+      return peer || 'unknown';
+    }
+    if (!AuthThrottlerGuard.peerIsTrusted(peer, proxies)) {
+      /* Header present but the direct peer is NOT trusted → ignore the
+       * header (spoofing attempt or unlisted proxy). */
+      return peer || 'unknown';
+    }
+    /* Peer is trusted: take the RIGHTMOST entry — the address the trusted
+     * proxy actually observed. Left-side entries may be client-forged. */
+    const parts = xff.split(',').map((s) => s.trim()).filter(Boolean);
+    return parts.length > 0 ? parts[parts.length - 1]! : peer || 'unknown';
+  }
+
+  /** IP-based tracker; trusted-proxy-aware, prefixed for bucketing. */
   protected async getTracker(req: Record<string, any>): Promise<string> {
-    const xff = (req.headers?.['x-forwarded-for'] ?? '') as string;
-    const ip = (xff.split(',')[0] || req.socket?.remoteAddress || 'unknown').trim();
-    return `auth:${ip}`;
+    return `auth:${AuthThrottlerGuard.resolveClientIp(req)}`;
   }
 
   /** v6 hook: pass through to the base implementation. Exposed for clarity. */

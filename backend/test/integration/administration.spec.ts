@@ -31,7 +31,13 @@ const bm = (branchId: string) => ({ staffId: P.bm, username: 'bm-s7', role: 'bra
 
 function build(db: ReturnType<typeof createFreshDatabase>['db'], audit: InMemoryAuditAdapter) {
   const ctx = new DbContextService(db);
-  return new AdministrationService(ctx, new AdministrationRepository(), new AuditService(audit));
+  return new AdministrationService(
+    ctx,
+    new AdministrationRepository(),
+    new AuditService(audit),
+    { revokeAllForStaff: async () => {} } as never,
+    { generateInviteToken: async () => ({ token: 't', expiresAt: new Date() }) } as never,
+  );
 }
 async function purge(admin: ReturnType<typeof createFreshDatabase>['db']) {
   await admin.execute(sql`DELETE FROM role_assignments WHERE staff_id IN (SELECT id FROM staff WHERE org_id=${TEST_ORG})`);

@@ -24,7 +24,7 @@ import { sql } from 'drizzle-orm';
 export const roleEnum = pgEnum('role', ['hq', 'branch_manager', 'branch_admin', 'doctor']);
 export const branchTypeEnum = pgEnum('branch_type', ['main', 'affiliate']);
 export const branchStatusEnum = pgEnum('branch_status', ['active', 'inactive']);
-export const staffStatusEnum = pgEnum('staff_status', ['Active', 'Suspended', 'Deactivated', 'Invited']);
+export const staffStatusEnum = pgEnum('staff_status', ['Active', 'Suspended', 'Deactivated', 'Invited', 'Pending', 'Rejected']);
 export const roleAssignmentStatusEnum = pgEnum('role_assignment_status', ['ACTIVE', 'SUPERSEDED']);
 export const patientStatusEnum = pgEnum('patient_status', ['Active', 'VIP', 'Recall Due', 'Inactive']);
 export const paymentStatusEnum = pgEnum('payment_status_type', ['PENDING', 'PAID', 'OVERDUE']);
@@ -91,6 +91,8 @@ export const staff = pgTable('staff', {
   doctorRef: varchar('doctor_ref', { length: 64 }),             /* maps to doctor identity for doctor role */
   mfaEnabled: boolean('mfa_enabled').notNull().default(false),
   mfaSecret: text('mfa_secret'),
+  inviteToken: text('invite_token'),                          /* single-use invitation token (S10 T1) */
+  inviteExpiresAt: timestamp('invite_expires_at', { withTimezone: true }),
   ...auditCols,
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
 }, (t) => [
@@ -1604,3 +1606,26 @@ export const reportAudit = pgTable('report_audit', {
 
 export type KpiDefinition = typeof kpiDefinitions.$inferSelect;
 export type ReportAuditRow = typeof reportAudit.$inferSelect;
+
+/* S10-1. REFRESH_TOKENS — secure refresh-token persistence (S10 T1, D2).
+ * Rotation via rotated_to, revocation via revoked_at, expiry via expires_at.
+ * token_hash = SHA-256 of the refresh token (never plaintext). No DELETE. */
+export const refreshTokens = pgTable('refresh_tokens', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  staffId: uuid('staff_id').notNull().references(() => staff.id, { onDelete: 'cascade' }),
+  tokenHash: text('token_hash').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  rotatedTo: uuid('rotated_to'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdIp: varchar('created_ip', { length: 45 }),
+  userAgent: text('user_agent'),
+}, (t) => [
+  uniqueIndex('refresh_tokens_token_hash_uq').on(t.tokenHash),
+  index('refresh_tokens_staff_idx').on(t.staffId),
+  index('refresh_tokens_org_idx').on(t.orgId),
+  index('refresh_tokens_expires_idx').on(t.expiresAt),
+]);
+
+export type RefreshToken = typeof refreshTokens.$inferSelect;

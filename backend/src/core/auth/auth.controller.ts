@@ -2,7 +2,10 @@ import {
   Controller, Post, Get, Body, Req, HttpCode, HttpStatus, Logger,
 } from '@nestjs/common';
 import { AuthService, LoginResult } from './auth.service';
+import { StaffRegistrationService } from './staff-registration.service';
 import { LoginDto } from './dto/login.dto';
+import { RefreshDto } from './dto/refresh.dto';
+import { RegisterDto } from './dto/register.dto';
 import { Public, RequirePermission } from './decorators';
 import { AuthedRequest } from './auth.guard';
 import { AuditService } from '../../shared/audit/audit.service';
@@ -11,10 +14,9 @@ import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 const ORG_ID = '00000000-0000-0000-0000-000000000001';
 
 /**
- * Auth controller — login + a protected self endpoint.
- * /auth/login is @Public (pre-auth). /auth/me requires a valid token and
- * returns the DB-derived Principal (proves role is backend-derived, not
- * client-supplied). /auth/can-finance is a demo of @RequirePermission.
+ * Auth controller — login + refresh + logout + register + a protected self endpoint.
+ * /auth/login, /auth/refresh, /auth/register are @Public (pre-auth).
+ * /auth/me requires a valid token and returns the DB-derived Principal.
  */
 @ApiTags('auth')
 @Controller({ path: 'auth', version: '1' })
@@ -23,13 +25,14 @@ export class AuthController {
 
   constructor(
     private readonly auth: AuthService,
+    private readonly registration: StaffRegistrationService,
     private readonly audit: AuditService,
   ) {}
 
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOkResponse({ description: 'Returns a Bearer access token + safe user payload.' })
+  @ApiOkResponse({ description: 'Returns Bearer access + refresh tokens + safe user payload.' })
   async login(@Body() dto: LoginDto): Promise<LoginResult> {
     try {
       const { result, principal } = await this.auth.login(dto.username, dto.password);
@@ -47,6 +50,34 @@ export class AuthController {
       });
       throw e;
     }
+  }
+
+  @Public()
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ description: 'Rotates refresh token, returns new access + refresh pair.' })
+  async refresh(@Body() dto: RefreshDto) {
+    return this.auth.refresh(dto.refreshToken);
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ description: 'Revokes the refresh token server-side.' })
+  async logout(@Req() req: AuthedRequest, @Body() dto: RefreshDto) {
+    await this.auth.logout(dto.refreshToken, req.principal!);
+    await this.safeAudit({
+      actorId: req.principal!.staffId, actorRole: req.principal!.role, action: 'auth_logout',
+      entity: 'staff', entityId: req.principal!.staffId, branchId: req.principal!.branchId,
+    });
+    return { ok: true };
+  }
+
+  @Public()
+  @Post('register')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOkResponse({ description: 'Staff self-registration via single-use invitation token → Pending.' })
+  async register(@Body() dto: RegisterDto) {
+    return this.registration.register(dto);
   }
 
   @Get('me')

@@ -17,6 +17,7 @@ import WhatsAppHub from "@/pages/WhatsAppHub";
 import AIManager from "@/pages/AIManager";
 import Administration from "@/pages/Administration";
 import SettingsPage from "@/pages/Settings";
+import Register from "@/pages/Register";
 import NotFound from "@/pages/NotFound";
 import { Loader2 } from "lucide-react";
 
@@ -39,8 +40,11 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-/** Role guard — aligned with server permissionMatrix (api/auth.ts).
- *  Finance & Reports = HQ + Branch Manager only (Receptionist/Doctor blocked). */
+/** Role guard — mirrors the locked ROLE_DOMAIN_MATRIX (backend = authority).
+ *  Cosmetic UI gating only; backend independently enforces via PermissionGuard + RLS.
+ *  Matrix view rights: admin=hq only; marketing=hq+branch_manager;
+ *  finance=hq+branch_manager (branch_admin/doctor have accessor-only, not the page);
+ *  reports=hq+branch_manager (doctor/receptionist = NONE per S9 Q1). */
 const roleGuard: Record<string, string[]> = {
   "/administration": ["hq"],
   "/marketing": ["hq", "branch_manager"],
@@ -59,6 +63,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
       <Route
         element={
           <RequireAuth>

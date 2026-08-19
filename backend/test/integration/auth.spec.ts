@@ -6,6 +6,7 @@ import {
 import { PasswordService } from '@core/auth/password.service';
 import { TokenService } from '@core/auth/token.service';
 import { PrincipalResolver } from '@core/auth/principal.resolver';
+import { DbContextService } from '@core/auth/db-context.service';
 import { AuthService } from '@core/auth/auth.service';
 import { JwtService } from '@nestjs/jwt';
 import { UnauthorizedError } from '@shared/errors/errors';
@@ -43,7 +44,9 @@ function buildAuth() {
   const config = { get: (k: string) => (k === 'jwt.secret' ? 'integration-test-secret-0123456789' : k === 'jwt.accessTtl' ? 900 : undefined) } as never;
   const tokens = new TokenService(jwt, config);
   const principals = new PrincipalResolver(db);
-  const auth = new AuthService(db, passwords, tokens, principals);
+  const refreshTokens = { issueRefreshToken: async () => ({ rawToken: 'rt', expiresAt: new Date() }), rotate: async () => ({ rawToken: 'rt2', expiresAt: new Date() }), revoke: async () => {} } as never;
+  const dbCtx = new DbContextService(db);
+  const auth = new AuthService(db, passwords, tokens, refreshTokens, principals, dbCtx);
   return { auth, principals, tokens, db };
 }
 

@@ -86,6 +86,15 @@ export class PatientsRepository {
     return rows[0] ?? null;
   }
 
+  /** S10 T1: partial update. Only supplied fields are set. */
+  async updatePatient(tx: DbClient, orgId: string, id: string, set: Record<string, unknown>): Promise<Patient | null> {
+    const rows = await tx.update(patients)
+      .set({ ...set, updatedAt: new Date() } as never)
+      .where(and(eq(patients.orgId, orgId), eq(patients.id, id), isNull(patients.deletedAt)))
+      .returning();
+    return rows[0] ?? null;
+  }
+
   async search(
     tx: DbClient, orgId: string, branchId: string | null, query: PatientSearchQuery,
   ): Promise<Patient[]> {

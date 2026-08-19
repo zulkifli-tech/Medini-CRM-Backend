@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Req, Query, Param } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Req, Query, Param } from '@nestjs/common';
 import { PatientsService } from '../application/patients.service';
 import { RequirePermission } from '../../../core/auth/decorators';
 import { AuthedRequest } from '../../../core/auth/auth.guard';
@@ -33,6 +33,12 @@ export class PatientsController {
   @RequirePermission('patients', 'view')
   getById(@Req() req: AuthedRequest, @Param('id') id: string) {
     return this.service.getById(req.principal!, id);
+  }
+
+  @Patch(':id')
+  @RequirePermission('patients', 'edit')
+  update(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+    return this.service.update(req.principal!, id, body);
   }
 
   @Get(':id/timeline')

@@ -40,6 +40,15 @@ const rescheduleSchema = z.object({
   expectedVersion: z.number().int().min(1),
 });
 
+const listSchema = z.object({
+  branchId: z.string().uuid().nullish(),
+  dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+  dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+  status: z.string().max(32).nullish(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
 /**
  * AppointmentsService — Sprint 2 remediation #3 (HQ access).
  * Branch contract (same as patients):
@@ -124,6 +133,17 @@ export class AppointmentsService {
       const appt = await this.repo.findById(tx, principal.orgId, id);
       if (!appt) throw new NotFoundError('Appointment', id);
       return appt;
+    });
+  }
+
+  /** S10 T1: list appointments (paginated, scoped, filtered). */
+  async list(principal: Principal, raw: unknown): Promise<Appointment[]> {
+    const parsed = listSchema.safeParse(raw);
+    if (!parsed.success) throw this.validation(parsed);
+    const filters = parsed.data;
+    const branchId = this.readBranch(principal);
+    return this.dbCtx.runAs(principal, async (tx) => {
+      return this.repo.list(tx, principal.orgId, branchId, filters);
     });
   }
 

@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { DbContextService } from '../../../core/auth/db-context.service';
 import { Principal } from '../../../core/auth/principal';
 import { AuditService } from '../../../shared/audit/audit.service';
+import { RefreshTokenService } from '../../../core/auth/refresh-token.service';
+import { StaffRegistrationService } from '../../../core/auth/staff-registration.service';
 import {
   ConflictError, ForbiddenError, NotFoundError, ValidationError,
 } from '../../../shared/errors/errors';
@@ -63,6 +65,8 @@ export class AdministrationService {
     private readonly dbCtx: DbContextService,
     private readonly repo: AdministrationRepository,
     private readonly audit: AuditService,
+    private readonly refreshTokens: RefreshTokenService,
+    private readonly registration: StaffRegistrationService,
   ) {}
 
   private parse<T>(schema: z.ZodType<T>, raw: unknown): T {
@@ -105,6 +109,25 @@ export class AdministrationService {
       status: typeof rawQuery.status === 'string' ? rawQuery.status : undefined,
     };
     return this.dbCtx.runAs(p, (tx) => this.repo.listStaff(tx, p.orgId, filters, pg.limit, pg.offset));
+  }
+
+  /* ---------- S10 T1: HQ invitation link generation ---------- */
+
+  /** Generate a single-use invitation link for an invited staff member.
+   *  HQ copies the link and sends it to the staff out-of-band (no email infra). */
+  async generateInviteLink(p: Principal, staffId: string, baseUrl: string) {
+    this.requireHq(p);
+    const member = await this.dbCtx.runAs(p, (tx) => this.repo.findStaff(tx, p.orgId, staffId));
+    if (!member) throw new NotFoundError('staff', staffId);
+    if (member.status !== 'Invited') throw new ConflictError(`Staff is not in Invited status (current: ${member.status})`);
+
+    const { token, expiresAt } = await this.registration.generateInviteToken(p, staffId);
+    const inviteLink = `${baseUrl.replace(/\/$/, '')}/register?token=${encodeURIComponent(token)}`;
+    await this.audit.record(
+      this.auditEvent(p, 'staff_invite_link_generated', 'staff', staffId, member.branchId,
+        undefined, { expiresAt: expiresAt.toISOString() }),
+    );
+    return { inviteLink, expiresAt };
   }
 
   async getStaff(p: Principal, id: string) {
@@ -151,8 +174,9 @@ export class AdministrationService {
     });
   }
 
-  /** Lifecycle command: activate / suspend / deactivate / reactivate.
-   * Enforces the state machine, self-protection, and last-HQ protection. */
+  /** Lifecycle command: activate / suspend / deactivate / reactivate / approve / reject.
+   * Enforces the state machine, self-protection, and last-HQ protection.
+   * S10 T1: deactivation also revokes all refresh tokens for the staff member. */
   async transitionStaff(p: Principal, id: string, command: StaffCommand, raw: unknown = {}) {
     this.requireHq(p);
     const input = this.parse(lifecycleInput, raw ?? {});
@@ -188,6 +212,24 @@ export class AdministrationService {
           { status: before.status }, { status: target, reason: input.reason }), tx);
       return updated;
     });
+  }
+
+  /** S10 T1: HQ approves a Pending staff application → Active. */
+  async approveStaff(p: Principal, id: string, raw: unknown = {}) {
+    return this.transitionStaff(p, id, 'approve', raw);
+  }
+
+  /** S10 T1: HQ rejects a Pending staff application → Rejected. */
+  async rejectStaff(p: Principal, id: string, raw: unknown = {}) {
+    return this.transitionStaff(p, id, 'reject', raw);
+  }
+
+  /** S10 T1: Deactivate + revoke all refresh tokens (session invalidation). */
+  async deactivateStaff(p: Principal, id: string, raw: unknown = {}) {
+    const result = await this.transitionStaff(p, id, 'deactivate', raw);
+    /* Revoke all refresh tokens so the deactivated staff cannot refresh. */
+    await this.refreshTokens.revokeAllForStaff(id, p.orgId);
+    return result;
   }
 
   /** Assign a new role/branch — versioned (old SUPERSEDED + new ACTIVE in the

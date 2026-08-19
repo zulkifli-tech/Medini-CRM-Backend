@@ -25,8 +25,11 @@ export class AdministrationController {
 
   @Post('staff/:id/activate') @RequirePermission('admin', 'edit') activate(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) { return this.service.transitionStaff(req.principal!, id, 'activate', body); }
   @Post('staff/:id/suspend') @RequirePermission('admin', 'edit') suspend(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) { return this.service.transitionStaff(req.principal!, id, 'suspend', body); }
-  @Post('staff/:id/deactivate') @RequirePermission('admin', 'edit') deactivate(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) { return this.service.transitionStaff(req.principal!, id, 'deactivate', body); }
+  @Post('staff/:id/deactivate') @RequirePermission('admin', 'edit') deactivate(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) { return this.service.deactivateStaff(req.principal!, id, body); }
   @Post('staff/:id/reactivate') @RequirePermission('admin', 'edit') reactivate(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) { return this.service.transitionStaff(req.principal!, id, 'reactivate', body); }
+  @Post('staff/:id/approve') @RequirePermission('admin', 'edit') approve(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) { return this.service.approveStaff(req.principal!, id, body); }
+  @Post('staff/:id/reject') @RequirePermission('admin', 'edit') reject(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) { return this.service.rejectStaff(req.principal!, id, body); }
+  @Post('staff/:id/invite-link') @RequirePermission('admin', 'edit') inviteLink(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: { baseUrl?: string }) { return this.service.generateInviteLink(req.principal!, id, body?.baseUrl ?? 'http://localhost:5173'); }
 
   @Post('staff/:id/assign-role') @RequirePermission('admin', 'edit') assignRole(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) { return this.service.assignRole(req.principal!, id, body); }
 }

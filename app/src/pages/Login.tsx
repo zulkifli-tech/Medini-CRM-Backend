@@ -15,6 +15,9 @@ const demoAccounts = [
   { role: "Doctor", username: "doctor", desc: "Clinical workspace only", color: "border-violet-300 bg-violet-50" },
 ];
 
+/* S10 T1: demo account panel only in dev; production login is clean. */
+const isDev = import.meta.env.DEV;
+
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -88,22 +91,27 @@ export default function Login() {
           </Button>
         </form>
 
-        <div className="mt-8">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Demo accounts — password: <code className="text-emerald-600 font-bold">medini123</code></p>
-          <div className="grid grid-cols-2 gap-2">
-            {demoAccounts.map((a) => (
-              <button
-                key={a.username}
-                type="button"
-                onClick={() => { setUsername(a.username); setPassword("medini123"); }}
-                className={`rounded-xl border p-3 text-left transition hover:shadow-sm ${a.color}`}
-              >
-                <p className="text-[13px] font-semibold text-slate-800">{a.role}</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">{a.desc}</p>
-                <p className="text-[11px] text-slate-400 mt-1 font-mono">{a.username}</p>
-              </button>
-            ))}
+        {isDev && (
+          <div className="mt-8">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Demo accounts — password: <code className="text-emerald-600 font-bold">medini123</code></p>
+            <div className="grid grid-cols-2 gap-2">
+              {demoAccounts.map((a) => (
+                <button
+                  key={a.username}
+                  type="button"
+                  onClick={() => { setUsername(a.username); setPassword("medini123"); }}
+                  className={`rounded-xl border p-3 text-left transition hover:shadow-sm ${a.color}`}
+                >
+                  <p className="text-[13px] font-semibold text-slate-800">{a.role}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">{a.desc}</p>
+                  <p className="text-[11px] text-slate-400 mt-1 font-mono">{a.username}</p>
+                </button>
+              ))}
+            </div>
           </div>
+        )}
+        <div className="mt-6 text-center">
+          <a href="#" className="text-xs text-slate-400 hover:text-emerald-600">Forgot password?</a>
         </div>
       </div>
     </div>

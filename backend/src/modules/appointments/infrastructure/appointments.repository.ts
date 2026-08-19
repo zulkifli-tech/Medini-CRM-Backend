@@ -60,6 +60,23 @@ export class AppointmentsRepository {
     return rows[0] ?? null;
   }
 
+  /** S10 T1: paginated list with optional filters. branchId=null → org-wide (HQ). */
+  async list(
+    tx: DbClient, orgId: string, branchId: string | null,
+    filters: { branchId?: string | null; dateFrom?: string | null; dateTo?: string | null; status?: string | null; limit: number; offset: number },
+  ): Promise<Appointment[]> {
+    const conds = [eq(appointments.orgId, orgId), isNull(appointments.deletedAt)];
+    if (branchId) conds.push(eq(appointments.branchId, branchId));
+    if (filters.branchId) conds.push(eq(appointments.branchId, filters.branchId));
+    if (filters.dateFrom) conds.push(sql`${appointments.scheduledDate} >= ${filters.dateFrom}`);
+    if (filters.dateTo) conds.push(sql`${appointments.scheduledDate} <= ${filters.dateTo}`);
+    if (filters.status) conds.push(eq(appointments.status, filters.status as never));
+    return tx.select().from(appointments)
+      .where(and(...conds))
+      .orderBy(appointments.scheduledDate, appointments.scheduledTime)
+      .limit(filters.limit).offset(filters.offset);
+  }
+
   /* nextCode removed — use OrgAllocator (org-safe, concurrency-safe). */
 
   /**

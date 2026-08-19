@@ -1,9 +1,9 @@
-import { createContext, useContext, type ReactNode } from "react";
-import { trpc } from "@/providers/trpc";
+import { createContext, useContext, type ReactNode, useEffect, useState } from "react";
+import { initAuth, login as authLogin, logout as authLogout, fetchMe, type AuthUser } from "@/lib/auth";
 
 type AuthContextValue = {
-  user: any | null;
-  branch: any | null;
+  user: AuthUser | null;
+  branch: { id: string; name: string } | null;
   isLoading: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -13,41 +13,33 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const utils = trpc.useUtils();
-  const me = trpc.auth.me.useQuery(undefined, {
-    retry: false,
-    refetchOnWindowFocus: false,
-    staleTime: 60_000,
-  });
+  const [user, setUser] = useState<AuthUser | null>(() => initAuth());
+  const [isLoading, setIsLoading] = useState(true);
 
-  const loginMutation = trpc.auth.login.useMutation({
-    onSuccess: () => utils.invalidate(),
-  });
-  const logoutMutation = trpc.auth.logout.useMutation({
-    onSuccess: () => utils.invalidate(),
-  });
+  useEffect(() => {
+    /* On mount, verify the stored session is still valid by fetching /me. */
+    fetchMe().then((me) => {
+      setUser(me);
+      setIsLoading(false);
+    });
+  }, []);
 
   const value: AuthContextValue = {
-    user: me.data?.user ?? null,
-    branch: me.data?.branch ?? null,
-    isLoading: me.isLoading,
+    user,
+    branch: null, /* branch derived from user.branchId via separate lookup if needed */
+    isLoading,
     login: async (username, password) => {
-      const res = await loginMutation.mutateAsync({ username, password });
-      const token = (res as any)?.token;
-      if (token) localStorage.setItem("medini_token", token);
+      const u = await authLogin(username, password);
+      setUser(u);
     },
     logout: async () => {
-      localStorage.removeItem("medini_token");
-      await logoutMutation.mutateAsync();
+      await authLogout();
+      setUser(null);
     },
-    refetch: () => me.refetch(),
+    refetch: () => {
+      fetchMe().then(setUser);
+    },
   };
-
-  // 401 → not logged in is a valid state, not an error to crash on
-  const unauthorized = (me.error as any)?.data?.code === "UNAUTHORIZED";
-  if (me.error && !unauthorized) {
-    // network/other error: still render children, user stays null
-  }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

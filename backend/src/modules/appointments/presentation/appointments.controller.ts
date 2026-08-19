@@ -13,6 +13,12 @@ export class AppointmentsController {
     return this.service.book(req.principal!, body);
   }
 
+  @Get()
+  @RequirePermission('appointments', 'view')
+  list(@Req() req: AuthedRequest, @Query() query: Record<string, unknown>) {
+    return this.service.list(req.principal!, query);
+  }
+
   @Get('queue')
   @RequirePermission('appointments', 'view')
   queue(

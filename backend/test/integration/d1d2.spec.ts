@@ -45,7 +45,9 @@ function buildAuth() {
   const config = { get: (k: string) => (k === 'jwt.secret' ? 'd1d2-test-secret-0123456789' : k === 'jwt.accessTtl' ? 900 : undefined) } as never;
   const tokens = new TokenService(jwt, config);
   const principals = new PrincipalResolver(db);
-  const auth = new AuthService(db, passwords, tokens, principals);
+  const refreshTokens = { issueRefreshToken: async () => ({ rawToken: 'rt', expiresAt: new Date() }), rotate: async () => ({ rawToken: 'rt2', expiresAt: new Date() }), revoke: async () => {} } as never;
+  const dbCtx = new DbContextService(db);
+  const auth = new AuthService(db, passwords, tokens, refreshTokens, principals, dbCtx);
   return { auth, db };
 }
 

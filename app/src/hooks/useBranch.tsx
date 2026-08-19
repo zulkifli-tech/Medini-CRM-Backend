@@ -2,18 +2,17 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 import { useAuth } from "./useAuth";
 
 type BranchContextValue = {
-  /** null = all branches (HQ only) */
-  branchId: number | null;
-  setBranchId: (id: number | null) => void;
+  /** null = all branches (HQ only). branchId is a UUID string (backend). */
+  branchId: string | null;
+  setBranchId: (id: string | null) => void;
 };
 
 const BranchContext = createContext<BranchContextValue | null>(null);
 
 export function BranchProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [hqBranch, setHqBranch] = useState<number | null>(() => {
-    const stored = localStorage.getItem("medini_branch");
-    return stored ? Number(stored) : null;
+  const [hqBranch, setHqBranch] = useState<string | null>(() => {
+    return localStorage.getItem("medini_branch");
   });
 
   const isHq = user?.role === "hq";
@@ -25,7 +24,7 @@ export function BranchProvider({ children }: { children: ReactNode }) {
         branchId,
         setBranchId: (id) => {
           setHqBranch(id);
-          if (id) localStorage.setItem("medini_branch", String(id));
+          if (id) localStorage.setItem("medini_branch", id);
           else localStorage.removeItem("medini_branch");
         },
       }}

@@ -1,8 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useBranch } from "@/hooks/useBranch";
-import { trpc } from "@/providers/trpc";
 import {
   LayoutDashboard, Users, CalendarDays, Stethoscope, FolderOpen, Wallet,
   BarChart3, Megaphone, Building2, MessageSquare, Bot, ShieldCheck, Settings,
@@ -21,7 +22,7 @@ import { initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/sonner";
 
-type NavItem = { label: string; path: string; icon: any };
+type NavItem = { label: string; path: string; icon: React.ComponentType<{ className?: string }> };
 type NavSection = { section?: string; items: NavItem[] };
 
 const navByRole: Record<string, NavSection[]> = {
@@ -103,10 +104,15 @@ const roleLabels: Record<string, string> = {
 };
 
 function GlobalSearch() {
+  /* S10 T1: backend has no global-search endpoint; patients search via /patients?q= */
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
-  const search = trpc.search.global.useQuery({ q }, { enabled: q.length >= 2 });
+  const search = useQuery({
+    queryKey: ["search", "patients", q],
+    queryFn: () => api.get<Array<{ id: string; name: string; mrn: string; phone: string | null }>>(`/patients?q=${encodeURIComponent(q)}&limit=8`),
+    enabled: q.length >= 2,
+  });
 
   return (
     <div className="relative w-full max-w-xl">
@@ -116,16 +122,16 @@ function GlobalSearch() {
         onChange={(e) => { setQ(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 200)}
-        placeholder="Search patients, appointments, treatments…"
+        placeholder="Search patients…"
         className="w-full rounded-full border border-slate-200 bg-slate-50/80 pl-10 pr-4 py-2.5 text-sm outline-none focus:border-teal-400 focus:bg-white focus:ring-4 focus:ring-teal-100/60 transition"
       />
       {open && q.length >= 2 && (
         <div className="absolute top-full mt-2 w-full rounded-2xl border border-slate-100 bg-white shadow-xl z-50 overflow-hidden">
           <div className="max-h-72 overflow-y-auto p-1.5">
-            {search.data?.patients?.length ? (
+            {(search.data ?? []).length ? (
               <>
                 <p className="px-2 py-1 text-[11px] font-semibold text-slate-400 uppercase">Patients</p>
-                {search.data.patients.map((p: any) => (
+                {(search.data ?? []).map((p) => (
                   <button key={p.id} className="w-full text-left px-2 py-2 rounded-xl hover:bg-teal-50 flex items-center gap-3"
                     onClick={() => { navigate(`/patients/${p.id}`); setQ(""); }}>
                     <Avatar className="h-7 w-7"><AvatarFallback className="bg-teal-100 text-teal-700 text-[10px]">{initials(p.name)}</AvatarFallback></Avatar>
@@ -136,20 +142,7 @@ function GlobalSearch() {
                   </button>
                 ))}
               </>
-            ) : null}
-            {search.data?.invoices?.length ? (
-              <>
-                <p className="px-2 py-1 text-[11px] font-semibold text-slate-400 uppercase mt-1">Invoices</p>
-                {search.data.invoices.map((inv: any) => (
-                  <button key={inv.id} className="w-full text-left px-2 py-2 rounded-xl hover:bg-teal-50"
-                    onClick={() => { navigate(`/finance?invoice=${inv.id}`); setQ(""); }}>
-                    <p className="text-sm font-medium text-slate-800">{inv.number}</p>
-                    <p className="text-xs text-slate-400">{inv.patient} · RM{Number(inv.total).toLocaleString()}</p>
-                  </button>
-                ))}
-              </>
-            ) : null}
-            {!search.data?.patients?.length && !search.data?.invoices?.length && (
+            ) : (
               <p className="px-3 py-4 text-sm text-slate-400 text-center">No results for “{q}”</p>
             )}
           </div>
@@ -164,19 +157,15 @@ export default function AppLayout() {
   const { branchId, setBranchId } = useBranch();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const branches = trpc.meta.branches.useQuery();
-  const waSessions = trpc.whatsapp.sessions.useQuery(undefined, { refetchInterval: 30000 });
-
   const nav = navByRole[user?.role ?? "doctor"] ?? [];
-  const unread = useMemo(
-    () => (waSessions.data ?? []).reduce((s: number, r: any) => s + Number(r.unread ?? 0), 0),
-    [waSessions.data],
-  );
+  const branches = useQuery({ queryKey: ["admin", "branches"], queryFn: () => api.get<Array<{ id: string; name: string }>>("/admin/branches"), enabled: user?.role === "hq" });
+  /* S10 T1: WhatsApp unread badge requires the whatsapp sessions endpoint; deferred. */
+  const unread = 0;
 
   const currentBranchName =
     user?.role === "hq"
       ? branchId
-        ? (branches.data ?? []).find((b: any) => b.id === branchId)?.name ?? "All Branches"
+        ? (branches.data ?? []).find((b) => b.id === branchId)?.name ?? "All Branches"
         : "All Branches"
       : branch?.name ?? "—";
 
@@ -295,15 +284,15 @@ export default function AppLayout() {
             <Menu className="h-[18px] w-[18px] text-slate-600" />
           </button>
           {user?.role === "hq" ? (
-            <Select value={branchId ? String(branchId) : "all"} onValueChange={(v) => setBranchId(v === "all" ? null : Number(v))}>
+            <Select value={branchId ? String(branchId) : "all"} onValueChange={(v) => setBranchId(v === "all" ? null : v)}>
               <SelectTrigger className="w-40 sm:w-56 h-10 rounded-full text-sm border-slate-200 bg-slate-50/80">
                 <Building2 className="h-4 w-4 mr-1.5 text-teal-500" />
                 <SelectValue placeholder="All Branches" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Branches (14)</SelectItem>
-                {(branches.data ?? []).map((b: any) => (
-                  <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
+                <SelectItem value="all">All Branches</SelectItem>
+                {(branches.data ?? []).map((b) => (
+                  <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

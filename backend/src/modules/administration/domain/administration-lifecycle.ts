@@ -12,13 +12,15 @@
  *   No in-place edit; every change = new ACTIVE record + old SUPERSEDED.
  */
 
-export type StaffStatus = 'Invited' | 'Active' | 'Suspended' | 'Deactivated';
+export type StaffStatus = 'Invited' | 'Pending' | 'Active' | 'Suspended' | 'Deactivated' | 'Rejected';
 
 const STAFF_TRANSITIONS: Record<StaffStatus, readonly StaffStatus[]> = {
-  Invited: ['Active'],
+  Invited: ['Pending', 'Active'],           /* Invited → Pending (registration) or direct Active (HQ) */
+  Pending: ['Active', 'Rejected'],          /* HQ approve → Active, HQ reject → Rejected */
   Active: ['Suspended', 'Deactivated'],
   Suspended: ['Active', 'Deactivated'],
   Deactivated: ['Active'], /* reactivate (HQ only) */
+  Rejected: [],                              /* terminal — no further transitions */
 };
 
 export function canTransitionStaffStatus(from: StaffStatus, to: StaffStatus): boolean {
@@ -26,7 +28,7 @@ export function canTransitionStaffStatus(from: StaffStatus, to: StaffStatus): bo
 }
 
 /** Lifecycle transition commands exposed by the Administration API. */
-export type StaffCommand = 'activate' | 'suspend' | 'deactivate' | 'reactivate';
+export type StaffCommand = 'activate' | 'suspend' | 'deactivate' | 'reactivate' | 'approve' | 'reject';
 
 /** Maps a command to its target status (undefined = not a lifecycle command). */
 export function staffCommandTarget(command: StaffCommand): StaffStatus {
@@ -35,5 +37,7 @@ export function staffCommandTarget(command: StaffCommand): StaffStatus {
     case 'suspend': return 'Suspended';
     case 'deactivate': return 'Deactivated';
     case 'reactivate': return 'Active';
+    case 'approve': return 'Active';
+    case 'reject': return 'Rejected';
   }
 }

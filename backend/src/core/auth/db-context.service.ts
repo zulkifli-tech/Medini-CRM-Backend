@@ -81,6 +81,8 @@ export class DbContextService {
       await t.execute(
         sql`SELECT set_config('app.doctor_id', ${principal.doctorId ?? ''}, true)`,
       );
+      /* S10 GLM: staff identity for least-privilege self-scoped RLS (refresh_tokens). */
+      await t.execute(sql`SELECT set_config('app.staff_id', ${principal.staffId}, true)`);
 
       return fn(t);
     });
@@ -97,6 +99,8 @@ export class DbContextService {
       await t.execute(sql`SELECT set_config('app.org_id', ${context.orgId}, true)`);
       await t.execute(sql`SELECT set_config('app.branch_ids', ${context.branchIds.join(',')}, true)`);
       await t.execute(sql`SELECT set_config('app.doctor_id', '', true)`);
+      /* S10 GLM: refresh_tokens worker policy needs app.staff_id set (empty for worker). */
+      await t.execute(sql`SELECT set_config('app.staff_id', '', true)`);
       return fn(t);
     });
   }

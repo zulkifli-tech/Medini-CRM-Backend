@@ -33,6 +33,10 @@ export const envSchema = z.object({
   AI_PROVIDER_BASE_URL: z.string().default(''),
   AI_PROVIDER_API_KEY: z.string().default(''),
 
+  /* S10 GLM R3: invitation link origin — server config ONLY (never request
+   * Host header / body). Defaults to the dev frontend. */
+  APP_PUBLIC_BASE_URL: z.string().default('http://localhost:5173'),
+
   LOG_LEVEL: z.string().default('info'),
 });
 

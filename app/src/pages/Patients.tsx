@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
 import { useBranch } from "@/hooks/useBranch";
 import { useAuth } from "@/hooks/useAuth";
-import { PageHeader, StatusBadge, EmptyState } from "@/components/shared";
+import { PageHeader, EmptyState } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { fmtDate, age, initials } from "@/lib/format";
+import { age, initials } from "@/lib/format";
 import { UserPlus, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
@@ -43,7 +43,7 @@ function NewPatientDialog({ open, onClose, onCreated }: { open: boolean; onClose
       onCreated(r.patient.id);
       onClose();
     },
-    onError: (e: any) => toast.error(e?.body?.message ?? e?.message ?? "Registration failed"),
+    onError: (e: unknown) => toast.error(errorMessage(e, "Registration failed")),
   });
 
   return (

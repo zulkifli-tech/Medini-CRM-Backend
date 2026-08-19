@@ -21,7 +21,7 @@ import {
 import { sql } from 'drizzle-orm';
 
 /* ---------- Enums (match locked contract) ---------- */
-export const roleEnum = pgEnum('role', ['hq', 'branch_manager', 'branch_admin', 'doctor']);
+export const roleEnum = pgEnum('role', ['hq', 'branch_manager', 'branch_admin', 'doctor', 'developer']);
 export const branchTypeEnum = pgEnum('branch_type', ['main', 'affiliate']);
 export const branchStatusEnum = pgEnum('branch_status', ['active', 'inactive']);
 export const staffStatusEnum = pgEnum('staff_status', ['Active', 'Suspended', 'Deactivated', 'Invited', 'Pending', 'Rejected']);

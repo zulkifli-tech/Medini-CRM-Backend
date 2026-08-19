@@ -178,6 +178,12 @@ export const ROLE_DOMAIN_MATRIX: Record<string, Record<string, RoleDomainCell>> 
     admin:        NONE,
     settings:     R(true, false, false, false, false, false, 'own'),
   },
+  /* S10 GLM 5.3 Remediation — Developer / System Admin. Technical-only
+   * identity: NO business-domain cells at all. Absent from the matrix → can()
+   * is fail-closed for every domain/action. The only permitted surface is the
+   * /system-admin/* technical API (gated by a dedicated role check, not can()).
+   * RLS migration 0027 adds a third deny layer at the database. */
+  developer: {},
 } as const;
 
 /* Alias: 'receptionist' (demo user role key) → branch_admin matrix */

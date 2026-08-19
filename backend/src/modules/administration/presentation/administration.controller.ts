@@ -29,7 +29,12 @@ export class AdministrationController {
   @Post('staff/:id/reactivate') @RequirePermission('admin', 'edit') reactivate(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) { return this.service.transitionStaff(req.principal!, id, 'reactivate', body); }
   @Post('staff/:id/approve') @RequirePermission('admin', 'edit') approve(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) { return this.service.approveStaff(req.principal!, id, body); }
   @Post('staff/:id/reject') @RequirePermission('admin', 'edit') reject(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) { return this.service.rejectStaff(req.principal!, id, body); }
-  @Post('staff/:id/invite-link') @RequirePermission('admin', 'edit') inviteLink(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: { baseUrl?: string }) { return this.service.generateInviteLink(req.principal!, id, body?.baseUrl ?? 'http://localhost:5173'); }
+  @Post('staff/:id/invite-link') @RequirePermission('admin', 'edit') inviteLink(@Req() req: AuthedRequest, @Param('id') id: string) {
+    /* S10 GLM R3: baseUrl comes ONLY from server config (APP_PUBLIC_BASE_URL).
+     * Client-supplied baseUrl is IGNORED — the previous `body.baseUrl` allowed
+     * an attacker-influenced invite link (host-header/trust injection). */
+    return this.service.generateInviteLink(req.principal!, id);
+  }
 
   @Post('staff/:id/assign-role') @RequirePermission('admin', 'edit') assignRole(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) { return this.service.assignRole(req.principal!, id, body); }
 }

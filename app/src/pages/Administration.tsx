@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
 import { PageHeader, Panel, EmptyState, StatusBadge } from "@/components/shared";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -52,7 +52,7 @@ function InviteDialog({ open, onClose }: { open: boolean; onClose: () => void })
       qc.invalidateQueries({ queryKey: ["admin", "staff"] });
       toast.success("Invitation link generated");
     },
-    onError: (e: any) => toast.error(e?.body?.message ?? e?.message ?? "Invite failed"),
+    onError: (e: unknown) => toast.error(errorMessage(e, "Invite failed")),
   });
 
   const reset = () => { setInvite(null); setForm({ name: "", username: "", role: "doctor", branchId: "", email: "" }); onClose(); };
@@ -124,7 +124,7 @@ function Applications() {
       toast.success(v.action === "approve" ? "Application approved — user is now Active" : "Application rejected");
       qc.invalidateQueries({ queryKey: ["admin", "staff"] });
     },
-    onError: (e: any) => toast.error(e?.body?.message ?? "Action failed"),
+    onError: (e: unknown) => toast.error(errorMessage(e, "Action failed")),
   });
 
   if (pending.isLoading) return <Skeleton className="h-40 w-full" />;
@@ -172,7 +172,7 @@ function Users() {
     mutationFn: ({ id, action }: { id: string; action: "deactivate" | "reactivate" | "suspend" }) =>
       api.post(`/admin/staff/${id}/${action}`, { reason: `HQ ${action}` }),
     onSuccess: (_d, v) => { toast.success(`User ${v.action}d`); qc.invalidateQueries({ queryKey: ["admin", "staff"] }); },
-    onError: (e: any) => toast.error(e?.body?.message ?? "Action failed"),
+    onError: (e: unknown) => toast.error(errorMessage(e, "Action failed")),
   });
 
   if (staff.isLoading) return <Skeleton className="h-64 w-full" />;

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { PageHeader, StatusBadge, Panel, EmptyState } from "@/components/shared";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,6 @@ const statusFlow: Record<string, string[]> = {
 };
 
 function BookingDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { user } = useAuth();
   const qc = useQueryClient();
   const patients = useQuery({ queryKey: ["patients", "all"], queryFn: () => api.get<Patient[]>("/patients?limit=100") });
   const doctors = useQuery({
@@ -48,7 +47,7 @@ function BookingDialog({ open, onClose }: { open: boolean; onClose: () => void }
       });
     },
     onSuccess: () => { toast.success("Appointment booked"); qc.invalidateQueries({ queryKey: ["appointments"] }); onClose(); },
-    onError: (e: any) => toast.error(e?.body?.message ?? "Booking failed"),
+    onError: (e: unknown) => toast.error(errorMessage(e, "Booking failed")),
   });
 
   return (
@@ -100,7 +99,7 @@ export default function Appointments() {
   const changeStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) => api.patch(`/appointments/${id}/status`, { status }),
     onSuccess: () => { toast.success("Status updated"); qc.invalidateQueries({ queryKey: ["appointments"] }); },
-    onError: (e: any) => toast.error(e?.body?.message ?? "Update failed"),
+    onError: (e: unknown) => toast.error(errorMessage(e, "Update failed")),
   });
 
   const rows = list.data ?? [];

@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { Tooth } from "@/components/ToothIcon";
 import { toast } from "sonner";
+import { errorMessage } from "@/lib/api";
 
 const demoAccounts = [
   { role: "HQ Super Admin", username: "hq", desc: "Full access · all 14 branches", color: "border-emerald-300 bg-emerald-50" },
@@ -33,8 +34,8 @@ export default function Login() {
       await login(username.trim(), password);
       toast.success("Welcome to Medini AI Dental CRM");
       navigate("/dashboard");
-    } catch (err: any) {
-      toast.error(err?.message ?? "Login failed");
+    } catch (err: unknown) {
+      toast.error(errorMessage(err, "Login failed"));
     } finally {
       setLoading(false);
     }

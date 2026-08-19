@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import { PageHeader, StatCard, Panel, EmptyState } from "@/components/shared";
 import { Skeleton } from "@/components/ui/skeleton";
 import { rm } from "@/lib/format";
-import { TrendingUp, Users, Percent, BellRing } from "lucide-react";
+import { TrendingUp } from "lucide-react";
 
 /* S10 T1: all six S9 reports endpoints are live backend data. */
 interface Kpi { key: string; name: string; value: number | null; unit: string; available?: boolean }

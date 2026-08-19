@@ -23,6 +23,13 @@ export class ApiRequestError extends Error {
   }
 }
 
+/** Type-safe error-message extractor for UI handlers (replaces `(e: any)`). */
+export function errorMessage(e: unknown, fallback: string): string {
+  if (e instanceof ApiRequestError) return e.body?.message || e.message || fallback;
+  if (e instanceof Error) return e.message || fallback;
+  return fallback;
+}
+
 type RefreshHandler = () => Promise<boolean>;
 type LogoutHandler = () => void;
 

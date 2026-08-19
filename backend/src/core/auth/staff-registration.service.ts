@@ -1,6 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { randomBytes } from 'crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, isNotNull, sql } from 'drizzle-orm';
+import { DATABASE } from '../../infrastructure/database/database.module';
+import { Database } from '../../infrastructure/database/database';
 import { DbContextService } from './db-context.service';
 import { PasswordService } from './password.service';
 import { staff } from '../../infrastructure/database/schema';
@@ -29,6 +31,7 @@ export class StaffRegistrationService {
   constructor(
     private readonly dbCtx: DbContextService,
     private readonly passwords: PasswordService,
+    @Inject(DATABASE) private readonly db: Database | null,
   ) {}
 
   /**
@@ -76,46 +79,37 @@ export class StaffRegistrationService {
 
     const passwordHash = await this.passwords.hash(input.password);
 
-    /* Pre-auth path: no Principal exists yet. Use a scoped worker context so
-     * RLS org-isolation applies (org is canonical single-tenant). */
-    return this.dbCtx.runAsWorker(
-      { orgId: ORG_ID, branchIds: [], correlationId: 'staff-registration', source: 'system_worker' },
-      async (tx) => {
-        const rows = await tx.select().from(staff)
-          .where(and(
-            eq(staff.inviteToken, input.inviteToken),
-            eq(staff.orgId, ORG_ID),
-            isNull(staff.deletedAt),
-          )).limit(1);
-        const member = rows[0];
-        if (!member) throw new UnauthorizedError('Invalid or expired invitation');
-        if (member.status !== 'Invited') throw new ConflictError(`Invitation already used or invalid (status: ${member.status})`);
-        if (member.inviteExpiresAt && member.inviteExpiresAt < new Date()) {
-          throw new UnauthorizedError('Invitation has expired');
+    /* Pre-auth path: no Principal exists yet. Use SECURITY DEFINER function to
+     * bypass RLS for the registration update. RLS policies cannot reliably see
+     * transaction-local GUCs during policy evaluation, so direct UPDATE fails. */
+    if (!this.db) throw new UnauthorizedError('Authentication unavailable');
+
+    /* Get a single connection from the pool. */
+    const client = await (this.db as unknown as { $client: { connect: () => Promise<{ query: (q: string, p?: unknown[]) => Promise<{ rows: unknown[]; rowCount: number }>; release: () => void }> } }).$client.connect();
+    try {
+      /* Call SECURITY DEFINER function — validates token, checks status/expiry,
+       * and performs the update in one atomic step. */
+      const result = await client.query(
+        `SELECT id, status FROM register_staff_with_token($1, $2, $3, $4, $5)`,
+        [input.inviteToken, input.name, input.username, passwordHash, ORG_ID],
+      );
+      const row = result.rows[0] as { id: string; status: string } | undefined;
+      if (!row) throw new ConflictError('Registration failed — invitation may have been used');
+
+      return { staffId: row.id, status: 'Pending' as const };
+    } catch (e) {
+      /* Map SECURITY DEFINER function errors to domain errors. */
+      if (e && typeof e === 'object' && 'code' in e) {
+        const err = e as { code: string; message: string };
+        if (err.code === 'P0002') {
+          if (err.message.includes('expired')) throw new UnauthorizedError('Invitation has expired');
+          throw new UnauthorizedError('Invalid or expired invitation');
         }
-
-        /* Username uniqueness (org-scoped). */
-        const existing = await tx.select({ id: staff.id }).from(staff)
-          .where(and(eq(staff.orgId, ORG_ID), eq(staff.username, input.username.toLowerCase()), isNull(staff.deletedAt)))
-          .limit(1);
-        if (existing[0] && existing[0].id !== member.id) {
-          throw new ConflictError(`Username '${input.username}' is already taken`);
-        }
-
-        /* Complete registration: set name/username/password, clear invite token,
-         * transition Invited → Pending. Role/branch/org are NOT touched. */
-        const updated = await tx.update(staff).set({
-          name: input.name,
-          username: input.username.toLowerCase(),
-          passwordHash,
-          status: 'Pending',
-          inviteToken: null,
-          inviteExpiresAt: null,
-          updatedAt: new Date(),
-        } as never).where(eq(staff.id, member.id)).returning({ id: staff.id });
-
-        return { staffId: updated[0]!.id, status: 'Pending' as const };
-      },
-    );
+        if (err.code === 'P0001') throw new ConflictError(err.message);
+      }
+      throw e;
+    } finally {
+      (client as unknown as { release: () => void }).release();
+    }
   }
 }

@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { Tooth } from "@/components/ToothIcon";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
 
 /**
  * Staff self-registration via single-use invitation token (S10 T1).
@@ -36,8 +36,8 @@ export default function Register() {
       await api.post("/auth/register", { inviteToken: token, name, username, password });
       toast.success("Application submitted — pending HQ approval");
       navigate("/login");
-    } catch (err: any) {
-      toast.error(err?.body?.message ?? err?.message ?? "Registration failed");
+    } catch (err: unknown) {
+      toast.error(errorMessage(err, "Registration failed"));
     } finally {
       setLoading(false);
     }

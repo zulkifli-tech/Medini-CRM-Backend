@@ -1,6 +1,7 @@
 import {
   Controller, Post, Get, Body, Req, HttpCode, HttpStatus, Logger,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService, LoginResult } from './auth.service';
 import { StaffRegistrationService } from './staff-registration.service';
 import { LoginDto } from './dto/login.dto';
@@ -30,6 +31,7 @@ export class AuthController {
   ) {}
 
   @Public()
+  @Throttle({ auth: { limit: 5, ttl: 60_000 } }) /* S10-05: login 5/min/IP */
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ description: 'Returns Bearer access + refresh tokens + safe user payload.' })
@@ -53,6 +55,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ auth: { limit: 10, ttl: 60_000 } }) /* S10-05: refresh 10/min/IP */
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ description: 'Rotates refresh token, returns new access + refresh pair.' })
@@ -73,6 +76,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ auth: { limit: 3, ttl: 60_000 } }) /* S10-05: register 3/min/IP */
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   @ApiOkResponse({ description: 'Staff self-registration via single-use invitation token → Pending.' })

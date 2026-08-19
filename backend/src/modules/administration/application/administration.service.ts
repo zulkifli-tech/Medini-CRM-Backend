@@ -114,9 +114,13 @@ export class AdministrationService {
   /* ---------- S10 T1: HQ invitation link generation ---------- */
 
   /** Generate a single-use invitation link for an invited staff member.
-   *  HQ copies the link and sends it to the staff out-of-band (no email infra). */
-  async generateInviteLink(p: Principal, staffId: string, baseUrl: string) {
+   *  HQ copies the link and sends it to the staff out-of-band (no email infra).
+   *
+   *  S10 GLM R3: the link host comes ONLY from server configuration
+   *  (APP_PUBLIC_BASE_URL) — never from request headers or body. */
+  async generateInviteLink(p: Principal, staffId: string) {
     this.requireHq(p);
+    const baseUrl = this.resolvePublicBaseUrl();
     const member = await this.dbCtx.runAs(p, (tx) => this.repo.findStaff(tx, p.orgId, staffId));
     if (!member) throw new NotFoundError('staff', staffId);
     if (member.status !== 'Invited') throw new ConflictError(`Staff is not in Invited status (current: ${member.status})`);
@@ -128,6 +132,23 @@ export class AdministrationService {
         undefined, { expiresAt: expiresAt.toISOString() }),
     );
     return { inviteLink, expiresAt };
+  }
+
+  /** S10 GLM R3: trusted origin allowlist. The invite link base is taken from
+   *  APP_PUBLIC_BASE_URL (server-side env) only; anything else is rejected
+   *  fail-closed. Defaults to the dev frontend for local runs. */
+  private resolvePublicBaseUrl(): string {
+    const raw = process.env.APP_PUBLIC_BASE_URL ?? 'http://localhost:5173';
+    let parsed: URL;
+    try {
+      parsed = new URL(raw);
+    } catch {
+      throw new Error('APP_PUBLIC_BASE_URL must be a valid absolute URL (e.g. https://app.medini.example)');
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      throw new Error('APP_PUBLIC_BASE_URL must use http(s)');
+    }
+    return parsed.origin;
   }
 
   async getStaff(p: Principal, id: string) {

@@ -34,6 +34,9 @@ export function BranchProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/* eslint-disable-next-line react-refresh/only-export-components --
+ * Context hook must live beside its provider (standard React context pattern);
+ * splitting into a second file would add indirection with zero HMR benefit here. */
 export function useBranch() {
   const ctx = useContext(BranchContext);
   if (!ctx) throw new Error("useBranch must be used within BranchProvider");

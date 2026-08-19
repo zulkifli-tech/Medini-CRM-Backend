@@ -34,7 +34,7 @@ function build() {
   const tokens = new TokenService(jwt, config);
   const principals = new PrincipalResolver(db);
   const refreshTokens = new RefreshTokenService(db, jwt, dbCtx, config);
-  const registration = new StaffRegistrationService(dbCtx, passwords);
+  const registration = new StaffRegistrationService(dbCtx, passwords, db);
   const auth = new AuthService(db, passwords, tokens, refreshTokens, principals, dbCtx);
   return { auth, registration, refreshTokens, principals, db, dbCtx };
 }

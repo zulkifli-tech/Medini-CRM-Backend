@@ -25,6 +25,7 @@ import { AdministrationModule } from './modules/administration/administration.mo
 import { SettingsModule } from './modules/settings/settings.module';
 import { AiManagerModule } from './modules/ai-manager/ai-manager.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { SystemAdminModule } from './modules/system-admin/system-admin.module';
 import { RootController } from './root.controller';
 
 /**
@@ -57,6 +58,7 @@ import { RootController } from './root.controller';
     SettingsModule,
     AiManagerModule,
     ReportsModule,
+    SystemAdminModule,
   ],
   controllers: [RootController],
   providers: [

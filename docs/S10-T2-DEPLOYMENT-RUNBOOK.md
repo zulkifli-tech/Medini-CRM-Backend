@@ -28,6 +28,27 @@ cp backend/.env.production.example backend/.env
 #   DOMAIN
 ```
 
+### Rate limiting / trusted proxy (S10 F-03 — REQUIRED before go-live)
+
+The auth rate limiter (login 5/min, register 3/min, refresh 10/min) buckets by
+client IP. Behind Caddy the direct peer is always Caddy's container address, so
+`TRUSTED_PROXIES` must list the Docker bridge CIDR or every client shares ONE
+bucket (fail-closed — safe, but one attack locks out all logins for 60s).
+
+`docker-compose.prod.yml` already sets `TRUSTED_PROXIES: ${TRUSTED_PROXIES:-172.16.0.0/12}`
+(172.16.0.0/12 covers every Docker bridge network; Caddy REPLACES
+`X-Forwarded-For` with `{remote_host}`, so the rightmost entry is always the
+real client — spoofing the header cannot bypass the limit). Override only if
+your Caddy sits on a different CIDR:
+
+```bash
+# In the server shell or backend/.env — only if not the default bridge range:
+TRUSTED_PROXIES=<caddy-peer-cidr>
+```
+
+Verify after first deploy (from outside): 6 rapid bad logins from one IP → 429;
+from another IP → still 401 (separate buckets).
+
 ---
 
 ## 3. Build & Start
@@ -45,7 +66,9 @@ Caddy auto-provisions a Let's Encrypt certificate for `$DOMAIN` on first 443 hit
 ## 4. Database Migration (first deploy only)
 
 ```bash
-# Run migrations 0000 → 0025 against the production database
+# Run migrations 0000 → 0028 against the production database
+# (includes S10 remediation 0025–0028: auth lifecycle, GLM 5.3 fixes,
+# developer role, D-01 staff deny).
 for f in backend/drizzle/0*.sql; do
   sed 's/--> statement-breakpoint//g' "$f" | \
     docker compose -f docker-compose.prod.yml exec -T postgres \

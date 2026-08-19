@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { Client } from 'pg';
+import { ensureReplayFixture } from './_replay-fixture';
 
 /**
  * S10 §10 — Developer /system-admin E2E on the CLEAN REPLAY DB (0000→0028).
@@ -114,6 +115,9 @@ describe('S10 §10 — Developer /system-admin E2E (clean replay DB)', () => {
     const distMain = resolve(__dirname, '../../dist/main.js');
     if (!existsSync(distMain)) throw new Error('dist/main.js missing — run `npm run build` first');
     /* Reset fixtures idempotently. */
+    /* F-01: self-contained — create+replay the fixture DB if absent (advisory
+     * lock serializes concurrent spec files; existing valid fixture is reused). */
+    await ensureReplayFixture(DB_ADMIN);
     await ownerQuery(`DELETE FROM role_assignments WHERE staff_id IN (SELECT id FROM staff WHERE username IN ($1, $2))`, [HQ_USER, DEV_USER]);
     await ownerQuery(`DELETE FROM refresh_tokens WHERE staff_id IN (SELECT id FROM staff WHERE username IN ($1, $2))`, [HQ_USER, DEV_USER]);
     await ownerQuery(`DELETE FROM staff WHERE username IN ($1, $2)`, [HQ_USER, DEV_USER]);

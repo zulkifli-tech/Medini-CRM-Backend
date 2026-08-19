@@ -57,6 +57,11 @@ services:
       DATABASE_URL: postgres://medini:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       DATABASE_RUNTIME_URL: postgres://medini_app:${POSTGRES_APP_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      # S10 F-03 (GLM final audit): Caddy is the only direct peer of the
+      # backend, on the Docker bridge network (172.16.0.0/12 covers all
+      # Docker bridge subnets). With this set, per-IP rate limiting works
+      # through the proxy; unset it stays fail-closed (one shared bucket).
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-172.16.0.0/12}
     depends_on:
       postgres:
         condition: service_healthy

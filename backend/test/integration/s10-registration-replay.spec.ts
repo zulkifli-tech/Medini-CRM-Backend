@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import http from 'node:http';
 import { Client } from 'pg';
+import { ensureReplayFixture } from './_replay-fixture';
 
 /**
  * S10 GLM 5.3 Final Remediation — LIVE registration clean-replay test (§5).
@@ -148,6 +149,9 @@ describe('S10 §5 — live registration flow on CLEAN REPLAY (0000→0028)', () 
   beforeAll(async () => {
     const distMain = resolve(__dirname, '../../dist/main.js');
     if (!existsSync(distMain)) throw new Error('dist/main.js missing — run `npm run build` first');
+    /* F-01: self-contained — create+replay the fixture DB if absent (advisory
+     * lock serializes concurrent spec files; existing valid fixture is reused). */
+    await ensureReplayFixture(DB_ADMIN);
     await resetFixtures();
     await seedBranch();
     await seedFirstHq();

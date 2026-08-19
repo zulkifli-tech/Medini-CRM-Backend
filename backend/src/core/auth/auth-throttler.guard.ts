@@ -22,12 +22,14 @@ import type { ThrottlerRequest } from '@nestjs/throttler';
  *       socket address is the tracker. Safe behind an unlisted proxy too
  *       (all proxy clients then share ONE bucket — fail-safe, not fail-open).
  *     - set: the header is honored ONLY when the socket peer is listed;
- *       the RIGHTMOST untrusted entry is then the real client (the proxy
- *       appends the peer it saw; anything left of it is client-supplied).
+ *       the RIGHTMOST entry is then the real client (the proxy puts the
+ *       peer it observed there; anything left of it is client-supplied).
  *
- *   Caddy's default reverse_proxy sets X-Forwarded-For = client IP it saw,
- *   appending to any client-supplied value — so rightmost-untrusted is the
- *   address Caddy actually observed, immune to left-side spoofing.
+ *   This repo's Caddyfile REPLACES X-Forwarded-For outright
+ *   (`header_up X-Forwarded-For {remote_host}` — verified in Caddyfile),
+ *   discarding any client-supplied value, so the single/rightmost entry is
+ *   exactly the address Caddy observed — immune to left-side spoofing. The
+ *   rightmost rule additionally stays correct for proxies that append.
  *
  * Named limits (see AuthController decorators):
  *   auth-login    : 5 requests / minute / IP

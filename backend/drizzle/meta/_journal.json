@@ -197,6 +197,13 @@
       "when": 1787400000015,
       "tag": "0028_s10_d01_staff_deny",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1787400000016,
+      "tag": "0029_t2_org_isolation_identity",
+      "breakpoints": true
     }
   ]
 }

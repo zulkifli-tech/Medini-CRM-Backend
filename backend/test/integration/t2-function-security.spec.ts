@@ -31,7 +31,7 @@ describe('T2-C/D — register_staff_with_token function security (live PG)', () 
     try {
       const res = await db.execute(sql`
         SELECT proconfig FROM pg_proc WHERE proname = 'register_staff_with_token'`);
-      const cfg = JSON.stringify((res as { rows?: Array<{ proconfig: unknown }> }).rows?.[0]?.proconfig ?? []);
+      const cfg = JSON.stringify((res as unknown as { rows?: Array<{ proconfig: unknown }> }).rows?.[0]?.proconfig ?? []);
       expect(cfg).toContain('search_path=pg_catalog, public');
     } finally { await closeDatabase(); }
   });
@@ -41,7 +41,7 @@ describe('T2-C/D — register_staff_with_token function security (live PG)', () 
     try {
       const res = await db.execute(sql`
         SELECT proacl FROM pg_proc WHERE proname = 'register_staff_with_token'`);
-      const acl = String((res as { rows?: Array<{ proacl: unknown }> }).rows?.[0]?.proacl ?? '');
+      const acl = String((res as unknown as { rows?: Array<{ proacl: unknown }> }).rows?.[0]?.proacl ?? '');
       /* proacl set explicitly (not NULL = PUBLIC default); medini_app granted. */
       expect(acl).not.toBe('');
       expect(acl).toContain('medini_app');

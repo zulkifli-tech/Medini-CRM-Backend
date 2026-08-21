@@ -60,7 +60,7 @@ describe('T2-B — admin staff read surface excludes credential columns (live PG
     try {
       const repo = new AdministrationRepository();
       const anyRow = await db.execute(sql`SELECT id FROM staff WHERE org_id = ${CANON} AND deleted_at IS NULL LIMIT 1`);
-      const id = String((anyRow as { rows?: Array<{ id: string }> }).rows?.[0]?.id ?? '');
+      const id = String((anyRow as unknown as { rows?: Array<{ id: string }> }).rows?.[0]?.id ?? '');
       expect(id).not.toBe('');
       const row = await repo.findStaff(db as never, CANON, id);
       assertNoCredentials(row as unknown as Record<string, unknown>);
@@ -73,7 +73,7 @@ describe('T2-B — admin staff read surface excludes credential columns (live PG
     try {
       const repo = new AdministrationRepository();
       const anyRow = await db.execute(sql`SELECT username FROM staff WHERE org_id = ${CANON} AND deleted_at IS NULL LIMIT 1`);
-      const username = String((anyRow as { rows?: Array<{ username: string }> }).rows?.[0]?.username ?? '');
+      const username = String((anyRow as unknown as { rows?: Array<{ username: string }> }).rows?.[0]?.username ?? '');
       expect(username).not.toBe('');
       const row = await repo.findStaffByUsername(db as never, CANON, username);
       assertNoCredentials(row as unknown as Record<string, unknown>);

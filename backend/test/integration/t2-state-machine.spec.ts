@@ -39,7 +39,7 @@ describe('T2-E — status columns are DB enums (invalid status values rejected b
         WHERE column_name = 'status' AND table_schema = 'public'
           AND table_name IN ('encounters','treatment_plans','referrals','expenses','lab_payables','staff','appointments')
         ORDER BY table_name`);
-      const rows = (res as { rows?: Array<{ table_name: string; udt_name: string }> }).rows ?? [];
+      const rows = (res as unknown as { rows?: Array<{ table_name: string; udt_name: string }> }).rows ?? [];
       expect(rows.length).toBeGreaterThan(0);
       for (const r of rows) {
         /* USER-DEFINED udt = a PostgreSQL enum (not free text) */
@@ -79,12 +79,12 @@ describe('T2-E — transition mutations are audited atomically (append-only trai
         VALUES ('11111111-1111-4111-8111-111111111111', 'hq', 'staff_suspended', 'staff', 't2-probe',
                 '00000000-0000-0000-0000-000000000001', 'api')`);
       const after = await db.execute(sql`SELECT count(*) AS c FROM audit_log`);
-      const b = Number((before as { rows?: Array<{ c: unknown }> }).rows?.[0]?.c ?? 0);
-      const a = Number((after as { rows?: Array<{ c: unknown }> }).rows?.[0]?.c ?? 0);
+      const b = Number((before as unknown as { rows?: Array<{ c: unknown }> }).rows?.[0]?.c ?? 0);
+      const a = Number((after as unknown as { rows?: Array<{ c: unknown }> }).rows?.[0]?.c ?? 0);
       expect(a).toBe(b + 1); /* audit insert visible in-tx */
       await db.execute(sql`ROLLBACK`);
       const post = await db.execute(sql`SELECT count(*) AS c FROM audit_log`);
-      const p = Number((post as { rows?: Array<{ c: unknown }> }).rows?.[0]?.c ?? 0);
+      const p = Number((post as unknown as { rows?: Array<{ c: unknown }> }).rows?.[0]?.c ?? 0);
       expect(p).toBe(b); /* rolled back — nothing persisted */
     } finally { await closeDatabase(); }
   });

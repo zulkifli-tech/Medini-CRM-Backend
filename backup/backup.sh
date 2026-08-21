@@ -14,10 +14,12 @@ LOG="${BACKUP_DIR}/backup.log"
 
 echo "[$(date -Iseconds)] Starting backup of ${POSTGRES_DB} from ${POSTGRES_HOST}" >> "$LOG"
 
-# pg_dump → gzip. --exit-on-error makes any dump error abort (set -e) so a
-# partial/corrupt dump is NEVER written as a valid artifact.
+# pg_dump → gzip. pg_dump exits non-zero on any dump error and
+# `set -euo pipefail` propagates that through the pipe, so a failed dump
+# aborts the script and a partial artifact is NOT treated as valid.
+# (Note: --exit-on-error is a pg_restore flag, not supported by pg_dump 16.)
 pg_dump -h "$POSTGRES_HOST" -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-  --no-owner --no-privileges --clean --if-exists --exit-on-error \
+  --no-owner --no-privileges --clean --if-exists \
   | gzip > "$BACKUP_FILE"
 
 # Integrity fingerprint (used by restore-rehearsal / verification).

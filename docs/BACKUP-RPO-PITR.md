@@ -66,7 +66,7 @@ to now. Pruning older segments can never orphan a retained backup.
 | WAL archive | continuous (`archive_timeout=300`) |
 | WAL retention prune | hourly (`43 * * * *`) |
 | Retention | 30 days (both dumps + WAL) |
-| Integrity | `--exit-on-error` dump + `sha256` fingerprint per artifact |
+| Integrity | `pg_dump` non-zero exit + `set -euo pipefail` (no partial artifact) + `sha256` fingerprint per artifact |
 | Verification | `restore-rehearsal.sh` (full) + `pitr-rehearsal.sh` (PITR) |
 | Failure signal | backup sidecar healthcheck (heartbeat <26h) + postgres healthcheck (WAL archiver stalled) + Prometheus alerts |
 
@@ -90,7 +90,7 @@ used for a real PITR (restore to just-before an incident).
 
 | Failure | Detection | Behaviour |
 |---|---|---|
-| pg_dump error | `--exit-on-error` + `set -e` | no valid artifact written; backup.log records failure; BackupStale alert fires at >26h |
+| pg_dump error | non-zero exit + `set -euo pipefail` | no valid artifact written; backup.log records failure; BackupStale alert fires at >26h |
 | WAL archive copy fails | archiver exit non-zero | PostgreSQL retries; `pg_stat_archiver.failed_count` rises; postgres container goes **unhealthy**; WalArchiveStale alert |
 | Interrupted archive copy | `.tmp` leftover | wal-retain.sh cleans `.tmp.*` >1h |
 | Disk full | node-exporter | DiskPressure alert at >85% |

@@ -38,7 +38,7 @@ const phone = () => `+601${pick(["2", "3", "6", "7", "9"])}-${rint(100, 999)} ${
 
 const INSERT_CHUNK = 100;
 
-async function insertChunked(db: any, table: any, rows: any[]) {
+async function insertChunked(db: any, table: any, rows: any[]) { // eslint-disable-line @typescript-eslint/no-explicit-any -- generic seed helper over heterogeneous drizzle tables
   for (let i = 0; i < rows.length; i += INSERT_CHUNK) {
     await db.insert(table).values(rows.slice(i, i + INSERT_CHUNK));
   }
@@ -83,7 +83,7 @@ export async function runSeed() {
   const userRows: Array<typeof s.users.$inferInsert> = [
     { branchId: null, role: "hq", name: "Aisha Rahman", username: "hq", email: "aisha@medinidental.com", passwordHash: pw, title: "Chief Executive Officer" },
   ];
-  branchDefs.forEach(([, _name], i) => {
+  branchDefs.forEach(([, ], i) => {
     userRows.push(
       { branchId: branchIds[i], role: "branch_manager", name: malayName(), username: `manager.${branchDefs[i][0].toLowerCase()}`, email: `manager.${branchDefs[i][0].toLowerCase()}@medinidental.com`, passwordHash: pw, title: "Branch Manager" },
       { branchId: branchIds[i], role: "branch_admin", name: malayName(), username: `reception.${branchDefs[i][0].toLowerCase()}`, email: `reception.${branchDefs[i][0].toLowerCase()}@medinidental.com`, passwordHash: pw, title: "Receptionist" },
@@ -262,7 +262,7 @@ export async function runSeed() {
         const start = at(day, startHour, pick([0, 15, 30, 45]));
         const end = new Date(start.getTime() + treatment.durationMin * 60000);
         let status: (typeof s.appointmentStatuses)[number];
-        let source: "manual" | "ai" | "walkin" = chance(0.45) ? "ai" : chance(0.3) ? "walkin" : "manual";
+        const source: "manual" | "ai" | "walkin" = chance(0.45) ? "ai" : chance(0.3) ? "walkin" : "manual";
         if (day < 0) status = chance(0.88) ? "completed" : chance(0.5) ? "no_show" : "cancelled";
         else if (day === 0) {
           if (start.getTime() < now - HOUR) status = pick(["completed", "completed", "in_progress", "no_show"] as const);

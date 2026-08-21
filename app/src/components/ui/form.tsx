@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- shadcn/ui co-locates cva variants/helpers with components; dev-HMR-only, no production impact */
 "use client"
 
 import * as React from "react"

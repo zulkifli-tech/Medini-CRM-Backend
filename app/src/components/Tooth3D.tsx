@@ -24,6 +24,7 @@ export function Tooth3D({ className = "" }: { className?: string }) {
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     } catch (e) {
       console.warn("WebGL unavailable — 3D tooth disabled", e);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional one-time error fallback when WebGL init fails
       setFailed(true);
       return;
     }

@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- shadcn/ui co-locates cva variants/helpers with components; dev-HMR-only, no production impact */
 "use client"
 
 import * as React from "react"
@@ -608,6 +609,7 @@ function SidebarMenuSkeleton({
 }) {
   // Random width between 50 to 90%.
   const width = React.useMemo(() => {
+    // eslint-disable-next-line react-hooks/purity -- one-time random skeleton width; memoized so it stays stable across renders
     return `${Math.floor(Math.random() * 40) + 50}%`
   }, [])
 

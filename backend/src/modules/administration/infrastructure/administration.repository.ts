@@ -9,6 +9,35 @@ import { toDomainError } from '../../../shared/errors/pg-error';
 
 export const ADMIN_PAGE_MAX = 100;
 
+/* Tier 2 (T2-B / FAMILY-4): the staff READ surface NEVER selects
+ * password_hash, mfa_secret, or invite_token. Authentication internals read
+ * those columns through their own dedicated auth queries (PrincipalResolver /
+ * PasswordService / StaffRegistrationService), NOT through this admin repo.
+ * Selecting them here would carry credentials into DTO/API responses. */
+const STAFF_READ_COLS = {
+  id: staff.id,
+  orgId: staff.orgId,
+  branchId: staff.branchId,
+  name: staff.name,
+  username: staff.username,
+  email: staff.email,
+  phone: staff.phone,
+  role: staff.role,
+  status: staff.status,
+  specialization: staff.specialization,
+  doctorRef: staff.doctorRef,
+  mfaEnabled: staff.mfaEnabled,
+  createdAt: staff.createdAt,
+  updatedAt: staff.updatedAt,
+  createdBy: staff.createdBy,
+  updatedBy: staff.updatedBy,
+  deletedAt: staff.deletedAt,
+} as const;
+/** Public staff record (credentials stripped by construction). */
+export type StaffRead = {
+  [K in keyof typeof STAFF_READ_COLS]: (typeof STAFF_READ_COLS)[K] extends { _: { data: infer D } } ? D : never;
+};
+
 /**
  * AdministrationRepository — data access for the governance plane (S7 T1).
  * Reads/writes the EXISTING S1 identity tables (staff, role_assignments,
@@ -39,22 +68,22 @@ export class AdministrationRepository {
     } catch (e) { throw toDomainError(e); }
   }
 
-  async findStaff(tx: DbClient, orgId: string, id: string): Promise<Staff | null> {
-    const rows = await tx.select().from(staff)
+  async findStaff(tx: DbClient, orgId: string, id: string): Promise<StaffRead | null> {
+    const rows = await tx.select(STAFF_READ_COLS).from(staff)
       .where(and(eq(staff.orgId, orgId), eq(staff.id, id), isNull(staff.deletedAt)))
       .limit(1);
-    return rows[0] ?? null;
+    return (rows[0] as StaffRead | undefined) ?? null;
   }
 
-  async findStaffByUsername(tx: DbClient, orgId: string, username: string): Promise<Staff | null> {
-    const rows = await tx.select().from(staff)
+  async findStaffByUsername(tx: DbClient, orgId: string, username: string): Promise<StaffRead | null> {
+    const rows = await tx.select(STAFF_READ_COLS).from(staff)
       .where(and(eq(staff.orgId, orgId), eq(staff.username, username), isNull(staff.deletedAt)))
       .limit(1);
-    return rows[0] ?? null;
+    return (rows[0] as StaffRead | undefined) ?? null;
   }
 
   /** Transaction-scoped row lock for lifecycle/concurrency-critical mutations. */
-  async lockStaff(tx: DbClient, orgId: string, id: string): Promise<Staff | null> {
+  async lockStaff(tx: DbClient, orgId: string, id: string): Promise<StaffRead | null> {
     const rows = await tx.select({ lock: sql`1` }).from(staff)
       .where(and(eq(staff.orgId, orgId), eq(staff.id, id), isNull(staff.deletedAt)))
       .for('update');
@@ -66,13 +95,14 @@ export class AdministrationRepository {
     tx: DbClient, orgId: string,
     filters: { branchId?: string | null; role?: string; status?: string },
     limit: number, offset: number,
-  ): Promise<Staff[]> {
+  ): Promise<StaffRead[]> {
     const conds = [eq(staff.orgId, orgId), isNull(staff.deletedAt)];
     if (filters.branchId) conds.push(eq(staff.branchId, filters.branchId));
     if (filters.role) conds.push(eq(staff.role, filters.role as never));
     if (filters.status) conds.push(eq(staff.status, filters.status as never));
-    return tx.select().from(staff).where(and(...conds))
+    const rows = await tx.select(STAFF_READ_COLS).from(staff).where(and(...conds))
       .orderBy(asc(staff.username)).limit(limit).offset(offset);
+    return rows as StaffRead[];
   }
 
   async updateStaff(tx: DbClient, orgId: string, id: string, set: Record<string, unknown>): Promise<Staff | null> {

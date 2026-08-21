@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { pingDatabase } from '../database/database';
+import { QueueRegistry } from '../queue/queue.registry';
 
 export interface DependencyStatus {
   configured: boolean;
@@ -22,7 +23,10 @@ export interface ReadinessReport {
  */
 @Injectable()
 export class HealthService {
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly queues: QueueRegistry,
+  ) {}
 
   liveness() {
     return {
@@ -48,17 +52,26 @@ export class HealthService {
         : { configured: true, status: 'degraded', note: 'PostgreSQL configured but UNREACHABLE.' };
     }
 
-    const redis: DependencyStatus = {
-      configured: redisConfigured,
-      status: 'pending_sprint',
-      note: 'Redis/BullMQ connection is established in the queue phase. Config presence reported only.',
-    };
+    /* Tier 1 (P7-F7): Redis is pinged for real when configured (never faked).
+     * The app reports 'degraded' overall if a CONFIGURED dependency is
+     * unreachable — honest readiness (BullMQ depends on Redis). */
+    let redis: DependencyStatus;
+    if (!redisConfigured) {
+      redis = { configured: false, status: 'not_configured', note: 'REDIS_URL not set.' };
+    } else {
+      const ok = await this.queues.ping();
+      redis = ok
+        ? { configured: true, status: 'ok', note: 'Redis reachable.' }
+        : { configured: true, status: 'degraded', note: 'Redis configured but UNREACHABLE.' };
+    }
 
     const dependencies = { postgres, redis };
-    /* ready only if postgres ok; degraded if configured-but-unreachable */
+    /* ready only if all configured deps ok; degraded if any configured-but-unreachable */
+    const anyDegraded = postgres.status === 'degraded' || redis.status === 'degraded';
     const status: ReadinessReport['status'] =
-      postgres.status === 'ok' ? 'ready'
+      postgres.status === 'ok' && !anyDegraded ? 'ready'
       : postgres.status === 'degraded' ? 'degraded'
+      : anyDegraded ? 'degraded'
       : 'not_ready';
 
     return {

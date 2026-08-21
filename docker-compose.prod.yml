@@ -287,18 +287,49 @@ services:
     depends_on:
       - prometheus
 
-  # ---- WAHA (WhatsApp transport) — only if launch scope ----
-  # Uncomment if WAHA is part of production launch.
+  # ==========================================================================
+  # WAHA (WhatsApp transport) — PRODUCTION-READY but DISABLED by default.
+  # Uncomment ONLY when WhatsApp is in launch scope AND you have read
+  # docs/WAHA-PRODUCTION-READINESS.md. Internal-only (no public port); the
+  # backend calls WAHA over medini-internal. Anti-ban (daily cap, 30-60s
+  # randomized cooldown, warming) is enforced in the BACKEND worker
+  # (whatsapp-lifecycle.ts / whatsapp-transport.worker.ts) — not here.
+  #
+  # SECURITY: WAHA_API_KEY / dashboard credentials are injected via
+  # backend/.env (secret manager) — NEVER commit real values.
+  # ==========================================================================
   # waha:
   #   image: devlikeapro/waha:latest
   #   restart: unless-stopped
   #   environment:
-  #     WAHA_API_KEY: ${WAHA_API_KEY}
+  #     # --- Authentication (required) ---
+  #     WAHA_API_KEY: ${WAHA_API_KEY}                       # STRONG random key (secret manager)
+  #     WAHA_DASHBOARD_ENABLED: "false"                     # no dashboard in prod (reduce surface)
+  #     WHATSAPP_SWAGGER_ENABLED: "false"                   # no public swagger in prod
+  #     # --- Engine / sessions ---
+  #     WHATSAPP_DEFAULT_ENGINE: NOWEB
+  #     WAHA_NAMESPACE: all
+  #     # --- Logging / privacy ---
+  #     WAHA_LOG_FORMAT: JSON
+  #     WAHA_LOG_LEVEL: info
+  #     WAHA_PRINT_QR: "false"                              # QR via authenticated API only, never logs
+  #     # --- Media hygiene (PHI minimisation) ---
+  #     WAHA_MEDIA_STORAGE: LOCAL
+  #     WHATSAPP_FILES_LIFETIME: 0                          # delete media immediately after fetch
+  #     WHATSAPP_FILES_FOLDER: /app/.media
+  #     WAHA_BASE_URL: http://waha:3000                     # internal service URL
   #   volumes:
-  #     - waha_sessions:/app/.sessions
+  #     - waha_sessions:/app/.sessions                      # session persistence across restarts
   #   networks:
-  #     - medini-internal
-  #   # NO public port — backend calls WAHA internally.
+  #     - medini-internal                                   # NO public port — backend calls internally
+  #   healthcheck:
+  #     # Liveness = the authenticated sessions endpoint responds (401 without
+  #     # a key still proves the process is up; use the key for a true 200).
+  #     test: ["CMD-SHELL", "wget -qO- --header='X-Api-Key: ${WAHA_API_KEY}' http://localhost:3000/api/sessions >/dev/null 2>&1 || exit 1"]
+  #     interval: 30s
+  #     timeout: 5s
+  #     retries: 3
+  #     start_period: 20s
 
 networks:
   medini-public:

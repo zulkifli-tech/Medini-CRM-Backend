@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Reflector } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerStorageService, Throttle, SkipThrottle } from '@nestjs/throttler';
+import { ThrottlerStorageService, Throttle, SkipThrottle } from '@nestjs/throttler';
 import { AuthThrottlerGuard } from '@core/auth/auth-throttler.guard';
 
 /**
@@ -10,7 +10,7 @@ import { AuthThrottlerGuard } from '@core/auth/auth-throttler.guard';
  * (d) @SkipThrottle still bypasses.
  */
 
-function makeContext(handler: Function, req: Record<string, any>) {
+function makeContext(handler: (...args: unknown[]) => unknown, req: Record<string, unknown>) {
   const context = {
     getHandler: () => handler,
     getClass: () => class TestClass {},
@@ -61,7 +61,7 @@ describe('S10-05 — AuthThrottlerGuard', () => {
   });
 
   it('tracks by client IP; XFF honored only from trusted proxies (rightmost wins)', async () => {
-    const getTracker = (guard as unknown as { getTracker: (r: Record<string, any>) => Promise<string> }).getTracker.bind(guard);
+    const getTracker = (guard as unknown as { getTracker: (r: Record<string, unknown>) => Promise<string> }).getTracker.bind(guard);
     /* Peer 10.0.0.1 is NOT trusted → client-supplied XFF ignored → peer IP. */
     expect(await getTracker({ headers: { 'x-forwarded-for': '9.9.9.9, 10.0.0.1' }, socket: { remoteAddress: '10.0.0.1' } })).toBe('auth:10.0.0.1');
     /* No XFF → socket IP. */
@@ -72,7 +72,6 @@ describe('S10-05 — AuthThrottlerGuard', () => {
 
   it('blocks the 4th login attempt (limit 3/min) and allows a different IP', async () => {
     const req = { headers: {}, socket: { remoteAddress: '4.4.4.4' } };
-    const res = { setHeader: () => undefined };
     const build = () => makeContext(TestController.prototype.login, req);
     /* 3 allowed, 4th blocked. */
     const results: boolean[] = [];

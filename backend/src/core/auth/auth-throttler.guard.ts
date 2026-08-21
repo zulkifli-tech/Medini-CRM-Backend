@@ -99,7 +99,11 @@ export class AuthThrottlerGuard extends ThrottlerGuard {
   }
 
   /** Resolve the real client IP under the trusted-proxy model. */
-  private static resolveClientIp(req: Record<string, any>): string {
+  /** Minimal shape of an inbound HTTP request used by the tracker. */
+  private static resolveClientIp(req: {
+    socket?: { remoteAddress?: string };
+    headers?: Record<string, unknown>;
+  }): string {
     const peer: string = req.socket?.remoteAddress ?? '';
     const proxies = AuthThrottlerGuard.trustedProxies;
     const xff = ((req.headers?.['x-forwarded-for'] ?? '') as string).trim();
@@ -122,8 +126,8 @@ export class AuthThrottlerGuard extends ThrottlerGuard {
   }
 
   /** IP-based tracker; trusted-proxy-aware, prefixed for bucketing. */
-  protected async getTracker(req: Record<string, any>): Promise<string> {
-    return `auth:${AuthThrottlerGuard.resolveClientIp(req)}`;
+  protected async getTracker(req: Record<string, unknown>): Promise<string> {
+    return `auth:${AuthThrottlerGuard.resolveClientIp(req as { socket?: { remoteAddress?: string }; headers?: Record<string, unknown> })}`;
   }
 
   /** v6 hook: pass through to the base implementation. Exposed for clarity. */

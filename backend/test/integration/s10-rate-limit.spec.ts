@@ -42,7 +42,7 @@ async function waitReady(): Promise<void> {
 
 describe('S10-05 — Rate limiting E2E (compiled app, real HTTP)', () => {
   let proc: ReturnType<typeof spawn> | null = null;
-  let stderr = '';
+
 
   beforeAll(async () => {
     const distMain = resolve(__dirname, '../../dist/main.js');
@@ -55,7 +55,7 @@ describe('S10-05 — Rate limiting E2E (compiled app, real HTTP)', () => {
       env: { ...process.env, PORT: String(PORT), NODE_ENV: 'test', TRUSTED_PROXIES: '127.0.0.1' },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    proc.stderr?.on('data', (d) => { stderr += d.toString(); });
+    proc.stderr?.on('data', () => undefined);
     proc.stdout?.on('data', () => undefined);
     await waitReady();
   }, 90_000);

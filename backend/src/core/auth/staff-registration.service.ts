@@ -1,6 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { randomBytes } from 'crypto';
-import { and, eq, isNull, isNotNull, sql } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { DATABASE } from '../../infrastructure/database/database.module';
 import { Database } from '../../infrastructure/database/database';
 import { DbContextService } from './db-context.service';

@@ -64,7 +64,7 @@ function waitReady(): Promise<void> {
   });
 }
 
-function request(method: string, path: string, body?: unknown, token?: string): Promise<{ status: number; json: any }> {
+function request(method: string, path: string, body?: unknown, token?: string): Promise<{ status: number; json: any }> { // eslint-disable-line @typescript-eslint/no-explicit-any -- dynamic test payload/row shape
   const data = body ? JSON.stringify(body) : null;
   return new Promise((res, rej) => {
     const headers: Record<string, string> = { 'content-type': 'application/json' };
@@ -74,7 +74,7 @@ function request(method: string, path: string, body?: unknown, token?: string): 
       let buf = '';
       r.on('data', (d) => { buf += d.toString(); });
       r.on('end', () => {
-        let json: any = null;
+        let json: any = null; // eslint-disable-line @typescript-eslint/no-explicit-any -- dynamic test payload/row shape
         try { json = JSON.parse(buf); } catch { /* non-JSON */ }
         res({ status: r.statusCode ?? -1, json });
       });
@@ -110,7 +110,7 @@ async function seedFirstHq(): Promise<void> {
   }
 }
 
-async function ownerQuery(sql: string, params?: unknown[]): Promise<any[]> {
+async function ownerQuery(sql: string, params?: unknown[]): Promise<any[]> { // eslint-disable-line @typescript-eslint/no-explicit-any -- dynamic test payload/row shape
   const client = new Client({ connectionString: REPLAY_ADMIN });
   await client.connect();
   try {
@@ -203,11 +203,11 @@ describe('S10 §5 — live registration flow on CLEAN REPLAY (0000→0028)', () 
     expect(rows[0]?.invite_token).toBeTruthy();
 
     /* Stash for the next tests. */
-    (globalThis as any).__s10 = { hqToken: token, staffId, inviteToken };
+    (globalThis as any).__s10 = { hqToken: token, staffId, inviteToken }; // eslint-disable-line @typescript-eslint/no-explicit-any -- dynamic test payload/row shape
   });
 
   it('5-9: staff registers via ACTUAL /auth/register; Pending + Argon2id + token cleared + single-use', async () => {
-    const { inviteToken } = (globalThis as any).__s10;
+    const { inviteToken } = (globalThis as any).__s10; // eslint-disable-line @typescript-eslint/no-explicit-any -- dynamic test payload/row shape
     const reg = await request('POST', '/api/v1/auth/register', {
       inviteToken, name: 'Replay Staff', username: STAFF_USER, password: STAFF_PASS,
     });
@@ -231,7 +231,7 @@ describe('S10 §5 — live registration flow on CLEAN REPLAY (0000→0028)', () 
   });
 
   it('10-11: HQ approves → Active; staff logs in via HTTP (access + refresh)', async () => {
-    const { hqToken, staffId } = (globalThis as any).__s10;
+    const { hqToken, staffId } = (globalThis as any).__s10; // eslint-disable-line @typescript-eslint/no-explicit-any -- dynamic test payload/row shape
     const approve = await request('POST', `/api/v1/admin/staff/${staffId}/approve`, {}, hqToken);
     expect([200, 201]).toContain(approve.status);
     const rows = await ownerQuery('SELECT status FROM staff WHERE id = $1', [staffId]);

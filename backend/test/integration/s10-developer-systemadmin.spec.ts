@@ -44,7 +44,7 @@ const HQ_PASS = 'Hq-S10dev-2024#Strong';
 const DEV_USER = 'developer_s10';
 const DEV_PASS = 'Dev-S10-2024#Strong';
 
-interface Res { status: number; json: any; }
+interface Res { status: number; json: any; } // eslint-disable-line @typescript-eslint/no-explicit-any -- dynamic test payload/row shape
 
 function request(method: string, path: string, body?: unknown, token?: string): Promise<Res> {
   return new Promise((resolve, reject) => {
@@ -56,7 +56,7 @@ function request(method: string, path: string, body?: unknown, token?: string): 
       let raw = '';
       res.on('data', (c) => { raw += c; });
       res.on('end', () => {
-        let json: any = null;
+        let json: any = null; // eslint-disable-line @typescript-eslint/no-explicit-any -- dynamic test payload/row shape
         try { json = JSON.parse(raw); } catch { json = raw; }
         resolve({ status: res.statusCode ?? -1, json });
       });
@@ -77,7 +77,7 @@ async function waitReady(): Promise<void> {
   throw new Error('app did not become ready');
 }
 
-async function ownerQuery(sql: string, params?: unknown[]): Promise<any[]> {
+async function ownerQuery(sql: string, params?: unknown[]): Promise<any[]> { // eslint-disable-line @typescript-eslint/no-explicit-any -- dynamic test payload/row shape
   const client = new Client({ connectionString: REPLAY_ADMIN });
   await client.connect();
   try {
@@ -109,7 +109,7 @@ async function seedHq(): Promise<string> {
 
 describe('S10 §10 — Developer /system-admin E2E (clean replay DB)', () => {
   let proc: ReturnType<typeof spawn> | null = null;
-  let stderr = '';
+
 
   beforeAll(async () => {
     const distMain = resolve(__dirname, '../../dist/main.js');
@@ -140,7 +140,7 @@ describe('S10 §10 — Developer /system-admin E2E (clean replay DB)', () => {
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    proc.stderr?.on('data', (d) => { stderr += d.toString(); });
+    proc.stderr?.on('data', () => undefined);
     proc.stdout?.on('data', () => undefined);
     await waitReady();
   }, 120_000);
@@ -169,7 +169,7 @@ describe('S10 §10 — Developer /system-admin E2E (clean replay DB)', () => {
       [ORG_ID, devRows[0].id],
     );
     expect(devRows[0].id).toBeTruthy();
-    (globalThis as any).__s10dev = { hqToken };
+    (globalThis as any).__s10dev = { hqToken }; // eslint-disable-line @typescript-eslint/no-explicit-any -- dynamic test payload/row shape
   });
 
   it('developer logs in → /system-admin/overview 200 (service/version/uptime/readiness); health endpoints 200', async () => {
@@ -177,7 +177,7 @@ describe('S10 §10 — Developer /system-admin E2E (clean replay DB)', () => {
     expect(login.status).toBe(200);
     const access = login.json?.data?.accessToken ?? login.json?.accessToken;
     expect(access).toBeTruthy();
-    (globalThis as any).__s10dev = { ...((globalThis as any).__s10dev ?? {}), access };
+    (globalThis as any).__s10dev = { ...((globalThis as any).__s10dev ?? {}), access }; // eslint-disable-line @typescript-eslint/no-explicit-any -- dynamic test payload/row shape
 
     const overview = await request('GET', '/api/system-admin/overview', undefined, access);
     expect(overview.status).toBe(200);
@@ -192,7 +192,7 @@ describe('S10 §10 — Developer /system-admin E2E (clean replay DB)', () => {
   });
 
   it('developer CANNOT reach business domains: patients 403, admin 403, appointments 403', async () => {
-    const { access } = (globalThis as any).__s10dev;
+    const { access } = (globalThis as any).__s10dev; // eslint-disable-line @typescript-eslint/no-explicit-any -- dynamic test payload/row shape
     expect((await request('GET', '/api/v1/patients', undefined, access)).status).toBe(403);
     expect((await request('POST', '/api/v1/admin/staff', { name: 'Nope', username: 'nope_dev_s10', role: 'doctor', branchId: BRANCH_ID }, access)).status).toBe(403);
     expect((await request('GET', '/api/v1/appointments', undefined, access)).status).toBe(403);

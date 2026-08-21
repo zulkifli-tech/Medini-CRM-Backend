@@ -39,3 +39,6 @@ build/
 coverage/
 .nyc_output/
 data/
+
+# Playwright E2E authenticated state (contains tokens) — never commit
+e2e/.auth/

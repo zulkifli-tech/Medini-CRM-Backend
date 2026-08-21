@@ -6,6 +6,9 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['test/**/*.spec.ts'],
+    /* Tier 3 STEP 5: load backend/.env deterministically (no manual
+     * `set -a && . ./.env`); existing env (CI) is never overridden. */
+    globalSetup: ['test/global-setup.ts'],
     coverage: { reporter: ['text', 'json-summary'] },
     /* Sprint 3 verification hardening (assertions untouched): 40+ live-PG
      * integration specs each hold connection pools against the shared dev DB;

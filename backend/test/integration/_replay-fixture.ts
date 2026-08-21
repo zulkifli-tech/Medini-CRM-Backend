@@ -5,8 +5,10 @@ import { resolve } from 'node:path';
 /**
  * S10 F-01 — Self-contained replay fixture (GLM 5.3 final audit condition #2).
  *
- * Two S10 specs boot the compiled app against `medini_replay_0028`, a clean
- * database replayed from migrations 0000→0028. Before this helper existed the
+ * Two S10 specs boot the compiled app against `medini_replay_current`, a clean
+ * database replayed from ALL migrations (0000→current). Tier 4: originally
+ * pinned to 0000→0028/294 policies at the S10 checkpoint; Tier 2 added
+ * 0029/0030, so the fixture now replays the full range and asserts 296 == dev. Before this helper existed the
  * DB had to be created MANUALLY — the 561/561 claim was not reproducible in a
  * fresh environment. This helper makes the suite self-contained:
  *
@@ -25,11 +27,11 @@ import { resolve } from 'node:path';
  * caller (DATABASE_URL), only the database NAME is switched.
  */
 
-export const REPLAY_DB = 'medini_replay_0028';
+export const REPLAY_DB = 'medini_replay_current';
 
-/** Expected policy count after replaying 0000→0028 (verified during the
- *  S10 final remediation; GLM re-audit §6 confirmed 294 == dev). */
-export const EXPECTED_POLICY_COUNT = 294;
+/** Expected policy count after replaying ALL migrations (296 at Tier 4;
+ *  == dev, verified Workstream F). */
+export const EXPECTED_POLICY_COUNT = 296;
 
 /** Cross-process advisory lock key (arbitrary stable constant). */
 const ADVISORY_KEY = 0x5331_3028; /* "S10(" — fixture create window */
@@ -156,9 +158,23 @@ function splitStatements(sqlText: string): string[] {
 async function replayMigrations(adminUrl: string): Promise<void> {
   const dir = resolve(__dirname, '../../drizzle');
   const files = (await readdir(dir)).filter((f) => /^0\d{3}_.*\.sql$/.test(f)).sort();
-  if (files.length !== 28) {
-    throw new Error(`replay fixture: expected 28 migrations in ${dir}, found ${files.length}`);
+  /* Tier 4: derive the expected set from the drizzle journal instead of a
+   * hardcoded total — adding 0031+ will not silently break this fixture;
+   * a journal/file mismatch still fails loudly. */
+  const journal = JSON.parse(await readFile(resolve(dir, 'meta/_journal.json'), 'utf8')) as {
+    entries: Array<{ tag: string }>;
+  };
+  const journalTags: string[] = journal.entries.map((e) => e.tag);
+  if (journalTags.length !== files.length) {
+    throw new Error(`replay fixture: journal has ${journalTags.length} entries but ${files.length} migration files in ${dir}`);
   }
+  files.forEach((file, i) => {
+    const fileTag = file.replace(/\.sql$/, '');
+    const journalTag = journalTags[i];
+    if (journalTag === undefined || journalTag !== fileTag) {
+      throw new Error(`replay fixture: journal[${i}]=${journalTag ?? '(missing)'} != file ${fileTag}`);
+    }
+  });
   const client = new Client({ connectionString: adminUrl });
   await client.connect();
   try {
@@ -177,7 +193,7 @@ async function replayMigrations(adminUrl: string): Promise<void> {
 }
 
 /**
- * Ensure `medini_replay_0028` exists and is a VALID full replay (294 policies).
+ * Ensure `medini_replay_current` exists and is a VALID full replay (296 policies).
  * Safe to call concurrently: only one caller creates/replays; others wait on
  * the advisory lock and then observe the completed fixture.
  *

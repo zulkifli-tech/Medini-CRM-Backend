@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import http from 'node:http';
 import { Client } from 'pg';
-import { ensureReplayFixture } from './_replay-fixture';
+import { ensureReplayFixture, REPLAY_DB } from './_replay-fixture';
 
 /**
  * S10 GLM 5.3 Final Remediation — LIVE registration clean-replay test (§5).
@@ -37,10 +37,10 @@ function withDb(url: string, db: string): string {
   u.pathname = `/${db}`;
   return u.toString();
 }
-const REPLAY_ADMIN = withDb(DB_ADMIN, 'medini_replay_0028');
+const REPLAY_ADMIN = withDb(DB_ADMIN, REPLAY_DB);
 /* Runtime (medini_app) credentials come from DATABASE_RUNTIME_URL — medini_app
  * has its OWN password, distinct from the owner role. */
-const REPLAY_APP = withDb(process.env.DATABASE_RUNTIME_URL ?? DB_ADMIN, 'medini_replay_0028');
+const REPLAY_APP = withDb(process.env.DATABASE_RUNTIME_URL ?? DB_ADMIN, REPLAY_DB);
 const ORG_ID = '00000000-0000-0000-0000-000000000001';
 
 const HQ_USER = 'hq_s10replay';

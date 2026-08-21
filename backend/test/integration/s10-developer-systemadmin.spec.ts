@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { Client } from 'pg';
-import { ensureReplayFixture } from './_replay-fixture';
+import { ensureReplayFixture, REPLAY_DB } from './_replay-fixture';
 
 /**
  * S10 §10 — Developer /system-admin E2E on the CLEAN REPLAY DB (0000→0028).
@@ -34,8 +34,8 @@ function withDb(url: string, db: string): string {
   u.pathname = `/${db}`;
   return u.toString();
 }
-const REPLAY_ADMIN = withDb(DB_ADMIN, 'medini_replay_0028');
-const REPLAY_APP = withDb(DB_RUNTIME, 'medini_replay_0028');
+const REPLAY_ADMIN = withDb(DB_ADMIN, REPLAY_DB);
+const REPLAY_APP = withDb(DB_RUNTIME, REPLAY_DB);
 const ORG_ID = '00000000-0000-0000-0000-000000000001';
 const BRANCH_ID = 'b1000000-0000-4000-8000-0000000000d1';
 

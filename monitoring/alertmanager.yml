@@ -1,0 +1,44 @@
+# ============================================================================
+# Medini CRM — Alertmanager routing (Tier 1, P7-F8)
+#
+# Fail-safe, secret-free routing. Default receiver is a generic webhook that
+# operators point at their notification channel (Slack/Telegram/email relay)
+# at deploy time via AM_WEBHOOK_URL. NO secrets are committed — the webhook
+# URL is injected through the environment, never this file.
+#
+# If AM_WEBHOOK_URL is unset the receiver target is a harmless localhost
+# blackhole: alerts still FIRE and are visible in the Alertmanager/Prometheus
+# UI, so monitoring never silently disables itself.
+# ============================================================================
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: default
+  group_by: ['alertname', 'area', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers:
+        - severity = "critical"
+      receiver: default
+      repeat_interval: 1h
+    - matchers:
+        - area = "backup"
+      receiver: default
+      repeat_interval: 12h
+
+receivers:
+  - name: default
+    webhook_configs:
+      - url: '${AM_WEBHOOK_URL:-http://localhost:9/alert-blackhole}'
+        send_resolved: true
+
+inhibit_rules:
+  # If the backend is down, suppress the readiness/5xx noise it causes.
+  - source_match:
+      alertname: BackendDown
+    target_matchers:
+      - alertname =~ "Api5xxRate|BackendNotReady|ApiLatencyHigh"
+    equal: ['service']

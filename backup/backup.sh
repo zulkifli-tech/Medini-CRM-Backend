@@ -14,13 +14,23 @@ LOG="${BACKUP_DIR}/backup.log"
 
 echo "[$(date -Iseconds)] Starting backup of ${POSTGRES_DB} from ${POSTGRES_HOST}" >> "$LOG"
 
-# pg_dump → gzip
+# pg_dump → gzip. --exit-on-error makes any dump error abort (set -e) so a
+# partial/corrupt dump is NEVER written as a valid artifact.
 pg_dump -h "$POSTGRES_HOST" -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-  --no-owner --no-privileges --clean --if-exists \
+  --no-owner --no-privileges --clean --if-exists --exit-on-error \
   | gzip > "$BACKUP_FILE"
+
+# Integrity fingerprint (used by restore-rehearsal / verification).
+sha256sum "$BACKUP_FILE" > "${BACKUP_FILE}.sha256"
 
 SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
 echo "[$(date -Iseconds)] Backup complete: $BACKUP_FILE ($SIZE)" >> "$LOG"
+
+# Tier 1: textfile metric for the BackupStale alert (scraped via node-exporter).
+METRICS_DIR="${NODE_TEXTFILE_DIR:-/backups/metrics}"
+mkdir -p "$METRICS_DIR"
+echo "medini_backup_last_success_timestamp_seconds $(date +%s)" > "${METRICS_DIR}/backup.prom.tmp.$$"
+mv -f "${METRICS_DIR}/backup.prom.tmp.$$" "${METRICS_DIR}/backup.prom"
 
 # Retention: delete backups older than RETENTION_DAYS
 find "$BACKUP_DIR" -name "medini_*.sql.gz" -mtime +"$RETENTION_DAYS" -delete

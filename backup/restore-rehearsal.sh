@@ -33,7 +33,13 @@ psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres -c "DROP DATABASE IF EXI
 echo "→ Creating fresh scratch database..."
 psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres -c "CREATE DATABASE $SCRATCH_DB;" -q
 
-# 2. Restore
+# 2. Verify integrity fingerprint if present (Tier 1: backup.sh writes .sha256)
+if [ -f "${BACKUP_FILE}.sha256" ]; then
+  echo "→ Verifying SHA256 integrity..."
+  ( cd "$(dirname "$BACKUP_FILE")" && sha256sum -c "$(basename "${BACKUP_FILE}.sha256")" )
+fi
+
+# 3. Restore
 echo "→ Restoring backup..."
 gunzip -c "$BACKUP_FILE" | psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$SCRATCH_DB" -v ON_ERROR_STOP=1 -q
 

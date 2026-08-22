@@ -58,10 +58,16 @@ Exact verification steps are in `docs/STAGING-TLS-VERIFICATION-RUNBOOK.md` §D:
 ## 4. Secrets & fail-safe properties
 
 - **No secrets in monitoring config.** `DATA_SOURCE_NAME`/`REDIS_PASSWORD` use
-  `${VAR}` injection at deploy; `AM_WEBHOOK_URL` and `GRAFANA_ADMIN_PASSWORD`
-  are env-injected, never committed.
-- **Fail-safe:** if `AM_WEBHOOK_URL` is unset, alerts still **fire** and are
-  visible in the Prometheus/Alertmanager UI (receiver is a harmless blackhole),
-  so monitoring never silently disables itself.
+  `${VAR}` injection at deploy (Docker Compose performs the expansion, not
+  Alertmanager). `GRAFANA_ADMIN_PASSWORD` is env-injected, never committed.
+- **F11-1 remediation:** Alertmanager configuration is fully STATIC — no
+  runtime environment interpolation, no shell-style `${VAR:-default}`
+  expansion (Alertmanager does not support it). The default receiver is a
+  harmless localhost blackhole; alerts still **fire** and are visible in the
+  Prometheus/Alertmanager UI, so monitoring never silently disables itself.
+- **Optional webhook:** to enable a real notification channel, copy
+  `monitoring/alertmanager.yml` to an override file, replace the blackhole
+  URL with the real webhook URL, and update the compose volume mount. Never
+  commit real webhook URLs or secrets.
 - **Inhibit rule:** when the backend is down, downstream 5xx/readiness/latency
   noise is suppressed so the operator sees one actionable critical.

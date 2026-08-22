@@ -200,8 +200,6 @@ services:
   alertmanager:
     image: prom/alertmanager:v0.27.0
     restart: unless-stopped
-    environment:
-      AM_WEBHOOK_URL: ${AM_WEBHOOK_URL:-}
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager

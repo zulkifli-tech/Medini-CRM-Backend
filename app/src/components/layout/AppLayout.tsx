@@ -346,7 +346,7 @@ export default function AppLayout() {
             <DropdownMenuContent align="end" className="w-56 rounded-xl">
               <DropdownMenuLabel>
                 <p className="font-semibold">{user?.name}</p>
-                <p className="text-xs text-slate-400 font-normal">{user?.email}</p>
+                <p className="text-xs text-slate-400 font-normal capitalize">{user?.role?.replace(/_/g, ' ')}</p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => navigate("/settings")}><Settings className="h-4 w-4 mr-2" /> Settings</DropdownMenuItem>

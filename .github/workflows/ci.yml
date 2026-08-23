@@ -24,8 +24,8 @@ jobs:
           cache-dependency-path: app/package-lock.json
       - name: Install
         run: npm ci || npm install
-      - name: TypeScript typecheck
-        run: npx tsc --noEmit
+      - name: TypeScript typecheck (project build — the real gate)
+        run: npm run check
       - name: Lint
         run: npm run lint
       - name: Production build

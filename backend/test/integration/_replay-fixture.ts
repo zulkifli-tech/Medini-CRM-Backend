@@ -29,9 +29,9 @@ import { resolve } from 'node:path';
 
 export const REPLAY_DB = 'medini_replay_current';
 
-/** Expected policy count after replaying ALL migrations (296 at Tier 4;
- *  == dev, verified Workstream F). */
-export const EXPECTED_POLICY_COUNT = 296;
+/** Expected policy count after replaying ALL migrations (302 at hardening pass;
+ *  == dev, verified after F-02 migration 0031 added 6 restrictive policies). */
+export const EXPECTED_POLICY_COUNT = 302;
 
 /** Cross-process advisory lock key (arbitrary stable constant). */
 const ADVISORY_KEY = 0x5331_3028; /* "S10(" — fixture create window */

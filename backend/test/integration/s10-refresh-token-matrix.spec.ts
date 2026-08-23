@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { pingDatabase, createDatabase, closeDatabase } from '@infrastructure/database/database';
+import { pingDatabase, createDatabase, createFreshDatabase, closeDatabase } from '@infrastructure/database/database';
 
 /**
  * S10 GLM 5.3 Final Remediation — refresh_tokens full role matrix (live PG).
@@ -19,6 +19,7 @@ import { pingDatabase, createDatabase, closeDatabase } from '@infrastructure/dat
  *   proves the developer can still only touch its OWN rows (staff_id GUC).
  */
 const RUNTIME_URL = process.env.DATABASE_RUNTIME_URL ?? process.env.DATABASE_URL ?? 'postgres://medini_app:***@localhost:5433/medini_dev';
+const ADMIN_URL = process.env.DATABASE_URL ?? 'postgres://medini:***@localhost:5433/medini_dev';
 const probe = pingDatabase(RUNTIME_URL).then((ok) => {
   if (!ok) console.warn('[s10-refresh-matrix] PostgreSQL not reachable — SKIPPING.');
   return ok;
@@ -28,9 +29,24 @@ function dbIt(name: string, fn: () => Promise<void>): void {
 }
 
 const ORG_ID = '00000000-0000-0000-0000-000000000001';
-/* Two distinct staff ids for ownership tests (seeded dev users). */
-const STAFF_A = '0b5d30e7-cb57-487a-a452-e7c22e02beae'; /* doctor */
-const STAFF_B = '5db15d84-56fb-4d5f-aeee-0b6208cb8807'; /* manager */
+/* Two distinct staff ids for ownership tests, resolved at runtime by natural
+ * key (username) — never hardcoded instance-specific UUIDs. */
+let STAFF_A = ''; /* doctor */
+let STAFF_B = ''; /* manager */
+
+beforeAll(async () => {
+  if (!(await probe)) return; /* tests self-skip when the DB is unreachable */
+  const { db, close } = createFreshDatabase(ADMIN_URL);
+  try {
+    const a = await db.execute(sql`SELECT id FROM staff WHERE org_id = ${ORG_ID} AND username = 'doctor' LIMIT 1`);
+    const b = await db.execute(sql`SELECT id FROM staff WHERE org_id = ${ORG_ID} AND username = 'manager' LIMIT 1`);
+    STAFF_A = String((a as unknown as { rows: Array<{ id: string }> }).rows[0]?.id ?? '');
+    STAFF_B = String((b as unknown as { rows: Array<{ id: string }> }).rows[0]?.id ?? '');
+  } finally {
+    await close();
+  }
+  if (!STAFF_A || !STAFF_B) throw new Error('canonical seeded staff (doctor, manager) not found for org');
+});
 
 function rows(res: unknown): Array<Record<string, unknown>> {
   return (res as { rows?: Array<Record<string, unknown>> }).rows ?? [];

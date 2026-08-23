@@ -61,6 +61,7 @@ async function waitReady(): Promise<void> {
 describe('RA-3 — Invalid UUID → HTTP 400 (compiled app, real HTTP)', () => {
   let proc: ReturnType<typeof spawn> | null = null;
   let token: string = '';
+  let hqStaffId: string = '';
 
   beforeAll(async () => {
     const distMain = resolve(__dirname, '../../dist/main.js');
@@ -72,6 +73,10 @@ describe('RA-3 — Invalid UUID → HTTP 400 (compiled app, real HTTP)', () => {
     await waitReady();
     const login = await post('/api/v1/auth/login', { username: 'hq', password: 'medini123' });
     token = JSON.parse(login.body).accessToken;
+    /* Resolve the authenticated HQ user's OWN staff id via the real API —
+     * never a hardcoded instance-specific UUID. */
+    const me = await get('/api/v1/auth/me', token);
+    hqStaffId = JSON.parse(me.body).data.staffId;
   }, 60_000);
 
   afterAll(() => { proc?.kill(); });
@@ -97,8 +102,9 @@ describe('RA-3 — Invalid UUID → HTTP 400 (compiled app, real HTTP)', () => {
   });
 
   it('valid UUID own-org → 200 OK', async () => {
-    // Use the seeded HQ staff ID
-    const res = await get('/api/v1/admin/staff/1e1d639b-16a5-435c-b2ab-42c733f65a96', token);
+    // Use the authenticated HQ user's own staff ID (resolved via /auth/me),
+    // not a hardcoded instance-specific UUID.
+    const res = await get(`/api/v1/admin/staff/${hqStaffId}`, token);
     expect(res.status).toBe(200);
   });
 

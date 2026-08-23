@@ -39,6 +39,25 @@ function build() {
   return { auth, registration, refreshTokens, principals, db, dbCtx };
 }
 
+/* Canonical seed identity — the seed inserts the single org and 14 branches
+ * with DB-generated UUIDs (gen_random_uuid()); never hardcode those
+ * instance-specific IDs here. Resolve by natural key instead. */
+const ORG_ID = '00000000-0000-0000-0000-000000000001';
+const CANONICAL_BRANCH_CODE = 'gelang-patah';
+
+/** Resolve the canonical branch id by natural key (code), not a hardcoded
+ *  instance-specific UUID. branches is FORCE RLS, so the owner connection must
+ *  assert an hq app context to read it (mirrors the seed's own read-back). */
+async function resolveBranchId(admin: ReturnType<typeof createDatabase>): Promise<string> {
+  await admin.execute(sql`SELECT set_config('app.role', 'hq', false)`);
+  const res = await admin.execute(
+    sql`SELECT id FROM branches WHERE org_id = ${ORG_ID} AND code = ${CANONICAL_BRANCH_CODE} AND deleted_at IS NULL LIMIT 1`,
+  );
+  const id = (res as unknown as { rows: Array<{ id: string }> }).rows[0]?.id;
+  if (!id) throw new Error(`canonical branch '${CANONICAL_BRANCH_CODE}' not found for org ${ORG_ID}`);
+  return id;
+}
+
 describe('S10 T3 — Authentication Security', () => {
   /* ---------- Login ---------- */
   dbIt('login with valid credentials succeeds', async () => {
@@ -124,10 +143,11 @@ describe('S10 T3 — Authentication Security', () => {
     const { auth } = build();
     /* Create a Pending staff directly (simulating post-registration pre-approval) */
     const admin = createDatabase(ADMIN_URL);
+    const branchId = await resolveBranchId(admin);
     const staffId = 'a1000000-0000-4000-8000-000000000001';
     await admin.execute(sql`DELETE FROM staff WHERE id = ${staffId}`);
     await admin.execute(sql`INSERT INTO staff (id, org_id, branch_id, name, username, role, status, password_hash)
-      VALUES (${staffId}, '00000000-0000-0000-0000-000000000001', ('50e9de38-7ea7-4d3d-9d89-f8034f8dd5c6'), 'Pending User', 'pending_user_s10t3', 'branch_admin', 'Pending', '$argon2id$v=19$m=65536,t=3,p=4$dummy')`);
+      VALUES (${staffId}, ${ORG_ID}, ${branchId}, 'Pending User', 'pending_user_s10t3', 'branch_admin', 'Pending', '$argon2id$v=19$m=65536,t=3,p=4$dummy')`);
     await expect(auth.login('pending_user_s10t3', 'password123')).rejects.toBeInstanceOf(UnauthorizedError);
     await admin.execute(sql`DELETE FROM staff WHERE id = ${staffId}`);
     await closeDatabase();
@@ -136,10 +156,11 @@ describe('S10 T3 — Authentication Security', () => {
   dbIt('Rejected user cannot login', async () => {
     const { auth } = build();
     const admin = createDatabase(ADMIN_URL);
+    const branchId = await resolveBranchId(admin);
     const staffId = 'a1000000-0000-4000-8000-000000000002';
     await admin.execute(sql`DELETE FROM staff WHERE id = ${staffId}`);
     await admin.execute(sql`INSERT INTO staff (id, org_id, branch_id, name, username, role, status, password_hash)
-      VALUES (${staffId}, '00000000-0000-0000-0000-000000000001', ('50e9de38-7ea7-4d3d-9d89-f8034f8dd5c6'), 'Rejected User', 'rejected_user_s10t3', 'branch_admin', 'Rejected', '$argon2id$v=19$m=65536,t=3,p=4$dummy')`);
+      VALUES (${staffId}, ${ORG_ID}, ${branchId}, 'Rejected User', 'rejected_user_s10t3', 'branch_admin', 'Rejected', '$argon2id$v=19$m=65536,t=3,p=4$dummy')`);
     await expect(auth.login('rejected_user_s10t3', 'password123')).rejects.toBeInstanceOf(UnauthorizedError);
     await admin.execute(sql`DELETE FROM staff WHERE id = ${staffId}`);
     await closeDatabase();
@@ -148,10 +169,11 @@ describe('S10 T3 — Authentication Security', () => {
   dbIt('Deactivated user cannot login', async () => {
     const { auth } = build();
     const admin = createDatabase(ADMIN_URL);
+    const branchId = await resolveBranchId(admin);
     const staffId = 'a1000000-0000-4000-8000-000000000003';
     await admin.execute(sql`DELETE FROM staff WHERE id = ${staffId}`);
     await admin.execute(sql`INSERT INTO staff (id, org_id, branch_id, name, username, role, status, password_hash)
-      VALUES (${staffId}, '00000000-0000-0000-0000-000000000001', ('50e9de38-7ea7-4d3d-9d89-f8034f8dd5c6'), 'Deactivated User', 'deact_user_s10t3', 'branch_admin', 'Deactivated', '$argon2id$v=19$m=65536,t=3,p=4$dummy')`);
+      VALUES (${staffId}, ${ORG_ID}, ${branchId}, 'Deactivated User', 'deact_user_s10t3', 'branch_admin', 'Deactivated', '$argon2id$v=19$m=65536,t=3,p=4$dummy')`);
     await expect(auth.login('deact_user_s10t3', 'password123')).rejects.toBeInstanceOf(UnauthorizedError);
     await admin.execute(sql`DELETE FROM staff WHERE id = ${staffId}`);
     await closeDatabase();

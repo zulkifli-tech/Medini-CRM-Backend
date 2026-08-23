@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Body, Req, Query, Param,
-} from '@nestjs/common';
+  ParseUUIDPipe } from '@nestjs/common';
 import { EncountersService } from '../application/encounters.service';
 import { RequirePermission } from '../../../core/auth/decorators';
 import { AuthedRequest } from '../../../core/auth/auth.guard';
@@ -39,19 +39,19 @@ export class EncountersController {
 
   @Get(':id')
   @RequirePermission('clinical', 'view')
-  getById(@Req() req: AuthedRequest, @Param('id') id: string) {
+  getById(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.getById(req.principal!, id);
   }
 
   @Patch(':id/status')
   @RequirePermission('clinical', 'edit')
-  transition(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  transition(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.service.transition(req.principal!, id, body);
   }
 
   @Post(':id/acknowledge-allergy')
   @RequirePermission('clinical', 'edit')
-  acknowledgeAllergy(@Req() req: AuthedRequest, @Param('id') id: string) {
+  acknowledgeAllergy(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.acknowledgeAllergy(req.principal!, id);
   }
 }

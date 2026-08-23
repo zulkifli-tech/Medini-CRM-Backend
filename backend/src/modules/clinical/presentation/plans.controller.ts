@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Body, Req, Query, Param,
-} from '@nestjs/common';
+  ParseUUIDPipe } from '@nestjs/common';
 import { PlansService } from '../application/plans.service';
 import { RequirePermission } from '../../../core/auth/decorators';
 import { AuthedRequest } from '../../../core/auth/auth.guard';
@@ -39,19 +39,19 @@ export class PlansController {
 
   @Get(':id')
   @RequirePermission('clinical', 'view')
-  getById(@Req() req: AuthedRequest, @Param('id') id: string) {
+  getById(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.getById(req.principal!, id);
   }
 
   @Patch(':id/status')
   @RequirePermission('clinical', 'edit')
-  changeStatus(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  changeStatus(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.service.changeStatus(req.principal!, id, body);
   }
 
   @Post(':id/items')
   @RequirePermission('clinical', 'edit')
-  addItem(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  addItem(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.service.addItem(req.principal!, id, body);
   }
 
@@ -63,7 +63,7 @@ export class PlansController {
 
   @Post(':id/sessions')
   @RequirePermission('clinical', 'create')
-  recordSession(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  recordSession(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.service.recordSession(req.principal!, id, body);
   }
 }

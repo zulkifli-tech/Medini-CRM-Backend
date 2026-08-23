@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Body, Req, Param, Query,
-} from '@nestjs/common';
+  ParseUUIDPipe } from '@nestjs/common';
 import { ClinicalExtendedService } from '../application/clinical-extended.service';
 import { RequirePermission } from '../../../core/auth/decorators';
 import { AuthedRequest } from '../../../core/auth/auth.guard';
@@ -28,7 +28,7 @@ export class ConsentsController {
 
   @Patch('templates/:id/status')
   @RequirePermission('clinical', 'edit')
-  setTemplateActive(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  setTemplateActive(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.service.setTemplateActive(req.principal!, id, body);
   }
 

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Req, Query, Param } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Req, Query, Param, ParseUUIDPipe } from '@nestjs/common';
 import { AppointmentsService } from '../application/appointments.service';
 import { RequirePermission } from '../../../core/auth/decorators';
 import { AuthedRequest } from '../../../core/auth/auth.guard';
@@ -31,19 +31,19 @@ export class AppointmentsController {
 
   @Get(':id')
   @RequirePermission('appointments', 'view')
-  getById(@Req() req: AuthedRequest, @Param('id') id: string) {
+  getById(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.getById(req.principal!, id);
   }
 
   @Patch(':id/status')
   @RequirePermission('appointments', 'edit')
-  changeStatus(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  changeStatus(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.service.changeStatus(req.principal!, id, body);
   }
 
   @Patch(':id/reschedule')
   @RequirePermission('appointments', 'edit')
-  reschedule(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  reschedule(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.service.reschedule(req.principal!, id, body);
   }
 }

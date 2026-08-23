@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Body, Req, Query, Param,
-} from '@nestjs/common';
+  ParseUUIDPipe } from '@nestjs/common';
 import { ClinicalExtendedService } from '../application/clinical-extended.service';
 import { RequirePermission } from '../../../core/auth/decorators';
 import { AuthedRequest } from '../../../core/auth/auth.guard';
@@ -32,7 +32,7 @@ export class ClinicalOpsController {
 
   @Patch('treatments/:id/status')
   @RequirePermission('clinical', 'edit')
-  setCatalogActive(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  setCatalogActive(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.service.setCatalogActive(req.principal!, id, body);
   }
 
@@ -77,7 +77,7 @@ export class ClinicalOpsController {
 
   @Patch('referrals/:id/status')
   @RequirePermission('clinical', 'edit')
-  updateReferralStatus(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  updateReferralStatus(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.service.updateReferralStatus(req.principal!, id, body);
   }
 }

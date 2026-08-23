@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Body, Req, Query, Param,
-} from '@nestjs/common';
+  ParseUUIDPipe } from '@nestjs/common';
 import { InsurancesService } from '../application/insurances.service';
 import { RequirePermission } from '../../../core/auth/decorators';
 import { AuthedRequest } from '../../../core/auth/auth.guard';
@@ -38,19 +38,19 @@ export class InsurancesController {
 
   @Get(':id')
   @RequirePermission('finance', 'view')
-  getById(@Req() req: AuthedRequest, @Param('id') id: string) {
+  getById(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.getById(req.principal!, id);
   }
 
   @Patch(':id')
   @RequirePermission('finance', 'edit')
-  update(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  update(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.service.update(req.principal!, id, body);
   }
 
   @Patch(':id/status')
   @RequirePermission('finance', 'edit')
-  changeStatus(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  changeStatus(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.service.changeStatus(req.principal!, id, body);
   }
 }

@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Body, Req, Param, Query,
-} from '@nestjs/common';
+  ParseUUIDPipe } from '@nestjs/common';
 import { NotesService } from '../application/notes.service';
 import { RequirePermission } from '../../../core/auth/decorators';
 import { AuthedRequest } from '../../../core/auth/auth.guard';
@@ -28,13 +28,13 @@ export class NotesController {
 
   @Post('notes/:id/sign')
   @RequirePermission('clinical', 'edit')
-  sign(@Req() req: AuthedRequest, @Param('id') id: string) {
+  sign(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.sign(req.principal!, id);
   }
 
   @Post('notes/:id/amend')
   @RequirePermission('clinical', 'create')
-  amend(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  amend(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.service.amend(req.principal!, id, body);
   }
 

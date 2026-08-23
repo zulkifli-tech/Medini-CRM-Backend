@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Body, Req, Query, Param,
-} from '@nestjs/common';
+  ParseUUIDPipe } from '@nestjs/common';
 import { FinanceService } from '../application/finance.service';
 import { ClinicalFinanceService } from '../application/clinical-finance.service';
 import { RequirePermission } from '../../../core/auth/decorators';
@@ -94,13 +94,13 @@ export class FinanceController {
 
   @Patch('expenses/:id')
   @RequirePermission('finance', 'edit')
-  updateExpense(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  updateExpense(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.finance.updateExpense(req.principal!, id, body);
   }
 
   @Patch('expenses/:id/status')
   @RequirePermission('finance', 'edit')
-  changeExpenseStatus(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  changeExpenseStatus(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.finance.changeExpenseStatus(req.principal!, id, body);
   }
 
@@ -127,19 +127,19 @@ export class FinanceController {
 
   @Patch('recurring/:id')
   @RequirePermission('finance', 'edit')
-  updateRecurring(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  updateRecurring(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.finance.updateRecurring(req.principal!, id, body);
   }
 
   @Patch('recurring/:id/status')
   @RequirePermission('finance', 'edit')
-  changeRecurringStatus(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  changeRecurringStatus(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.finance.changeRecurringStatus(req.principal!, id, body);
   }
 
   @Post('recurring/:id/advance')
   @RequirePermission('finance', 'edit')
-  advanceRecurring(@Req() req: AuthedRequest, @Param('id') id: string) {
+  advanceRecurring(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.finance.advanceRecurring(req.principal!, id);
   }
 
@@ -161,7 +161,7 @@ export class FinanceController {
 
   @Patch('alerts/:id/status')
   @RequirePermission('finance', 'edit')
-  updateAlertStatus(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  updateAlertStatus(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.finance.updateAlertStatus(req.principal!, id, body);
   }
 
@@ -226,13 +226,13 @@ export class FinanceController {
 
   @Post('lab-payables/:id/payment')
   @RequirePermission('finance', 'edit')
-  applyLabPayment(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  applyLabPayment(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.clinical.applyLabPayment(req.principal!, id, body);
   }
 
   @Patch('lab-payables/:id/status')
   @RequirePermission('finance', 'edit')
-  changeLabPayableStatus(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  changeLabPayableStatus(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.clinical.changeLabPayableStatus(req.principal!, id, body);
   }
 
@@ -261,19 +261,19 @@ export class FinanceController {
 
   @Patch('commissions/:id/status')
   @RequirePermission('finance', 'approve')
-  changeCommissionStatus(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  changeCommissionStatus(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.clinical.changeCommissionStatus(req.principal!, id, body);
   }
 
   @Post('commissions/:id/payouts')
   @RequirePermission('finance', 'create')
-  recordPayout(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  recordPayout(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.clinical.recordPayout(req.principal!, id, body);
   }
 
   @Get('commissions/:id/payouts')
   @RequirePermission('finance', 'view')
-  listPayouts(@Req() req: AuthedRequest, @Param('id') id: string) {
+  listPayouts(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.clinical.listPayouts(req.principal!, id);
   }
 }

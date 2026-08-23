@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Req, Query, Param } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Req, Query, Param, ParseUUIDPipe } from '@nestjs/common';
 import { PatientsService } from '../application/patients.service';
 import { RequirePermission } from '../../../core/auth/decorators';
 import { AuthedRequest } from '../../../core/auth/auth.guard';
@@ -31,13 +31,13 @@ export class PatientsController {
 
   @Get(':id')
   @RequirePermission('patients', 'view')
-  getById(@Req() req: AuthedRequest, @Param('id') id: string) {
+  getById(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.getById(req.principal!, id);
   }
 
   @Patch(':id')
   @RequirePermission('patients', 'edit')
-  update(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  update(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.service.update(req.principal!, id, body);
   }
 
@@ -45,7 +45,7 @@ export class PatientsController {
   @RequirePermission('patients', 'view')
   timeline(
     @Req() req: AuthedRequest,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Query('limit') limit?: string,
   ) {
     return this.service.timeline(req.principal!, id, limit ? Number(limit) : undefined);
@@ -53,13 +53,13 @@ export class PatientsController {
 
   @Get(':id/relationships')
   @RequirePermission('patients', 'view')
-  relationships(@Req() req: AuthedRequest, @Param('id') id: string) {
+  relationships(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.listRelationships(req.principal!, id);
   }
 
   @Post(':id/relationships')
   @RequirePermission('patients', 'edit')
-  addRelationship(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  addRelationship(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.service.addRelationship(req.principal!, id, body);
   }
 }

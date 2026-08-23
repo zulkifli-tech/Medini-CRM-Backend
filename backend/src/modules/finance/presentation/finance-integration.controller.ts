@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Body, Req, Query, Param,
-} from '@nestjs/common';
+  ParseUUIDPipe } from '@nestjs/common';
 import { FinanceIntegrationService } from '../application/finance-integration.service';
 import { RequirePermission } from '../../../core/auth/decorators';
 import { AuthedRequest } from '../../../core/auth/auth.guard';
@@ -49,7 +49,7 @@ export class FinanceIntegrationController {
 
   @Post('sync/:id/push')
   @RequirePermission('finance', 'create')
-  pushSync(@Req() req: AuthedRequest, @Param('id') id: string) {
+  pushSync(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.integration.pushSync(req.principal!, id);
   }
 
@@ -89,7 +89,7 @@ export class FinanceIntegrationController {
 
   @Patch('reconciliation/:id/resolve')
   @RequirePermission('finance', 'approve')
-  resolveReconciliation(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+  resolveReconciliation(@Req() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.integration.resolveReconciliation(req.principal!, id, body);
   }
 }

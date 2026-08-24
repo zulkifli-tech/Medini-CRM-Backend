@@ -6,23 +6,35 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { rm } from "@/lib/format";
 import { TrendingUp } from "lucide-react";
 
-/* S10 T1: all six S9 reports endpoints are live backend data. */
+/* S10 T1: all six S9 reports endpoints are live backend data.
+   Backend returns envelope objects: {period,from,to,scope,cards|rows} —
+   the UI unwraps them here (contract alignment). */
 interface Kpi { key: string; name: string; value: number | null; unit: string; available?: boolean }
 interface BranchRev { branchName?: string; branchId?: string; revenue: number }
 interface Mix { category?: string; treatmentName?: string; count: number; revenue?: number }
 interface Trend { date: string; count: number }
 interface DocProd { doctorName?: string; doctorId?: string; revenue: number; appointments?: number }
 
+interface KpiEnvelope { cards?: Array<{ kpiKey: string; value: string | number | null; unit: string; available?: boolean }> }
+interface RowsEnvelope<T> { rows?: T[] }
+
 export default function Reports() {
   const [days, setDays] = useState(30);
-  const kpis = useQuery({ queryKey: ["reports", "kpis", days], queryFn: () => api.get<Kpi[]>(`/reports/kpis?days=${days}`) });
-  const revenue = useQuery({ queryKey: ["reports", "revenue", days], queryFn: () => api.get<BranchRev[]>(`/reports/revenue-by-branch?days=${days}`) });
-  const mix = useQuery({ queryKey: ["reports", "mix", days], queryFn: () => api.get<Mix[]>(`/reports/treatment-mix?days=${days}`) });
-  const trends = useQuery({ queryKey: ["reports", "trends", days], queryFn: () => api.get<Trend[]>(`/reports/appointment-trends?days=${days}`) });
-  const doctors = useQuery({ queryKey: ["reports", "doctors", days], queryFn: () => api.get<DocProd[]>(`/reports/doctor-production?days=${days}`) });
+  const kpis = useQuery({ queryKey: ["reports", "kpis", days], queryFn: () => api.get<KpiEnvelope | Kpi[]>(`/reports/kpis?days=${days}`) });
+  const revenue = useQuery({ queryKey: ["reports", "revenue", days], queryFn: () => api.get<RowsEnvelope<BranchRev> | BranchRev[]>(`/reports/revenue-by-branch?days=${days}`) });
+  const mix = useQuery({ queryKey: ["reports", "mix", days], queryFn: () => api.get<RowsEnvelope<Mix> | Mix[]>(`/reports/treatment-mix?days=${days}`) });
+  const trends = useQuery({ queryKey: ["reports", "trends", days], queryFn: () => api.get<RowsEnvelope<Trend> | Trend[]>(`/reports/appointment-trends?days=${days}`) });
+  const doctors = useQuery({ queryKey: ["reports", "doctors", days], queryFn: () => api.get<RowsEnvelope<DocProd> | DocProd[]>(`/reports/doctor-production?days=${days}`) });
 
-  const kpiList = kpis.data ?? [];
-  const totalRevenue = (revenue.data ?? []).reduce((s, r) => s + (r.revenue ?? 0), 0);
+  /* Unwrap envelopes defensively (backend contract = envelope, never bare array). */
+  const kpiList: Kpi[] = Array.isArray(kpis.data)
+    ? kpis.data
+    : (kpis.data?.cards ?? []).map((c) => ({ key: c.kpiKey, name: c.kpiKey.replace(/_/g, " "), value: c.value == null ? null : Number(c.value), unit: c.unit, available: c.available }));
+  const revenueRows: BranchRev[] = Array.isArray(revenue.data) ? revenue.data : (revenue.data?.rows ?? []);
+  const mixRows: Mix[] = Array.isArray(mix.data) ? mix.data : (mix.data?.rows ?? []);
+  const trendRows: Trend[] = Array.isArray(trends.data) ? trends.data : (trends.data?.rows ?? []);
+  const doctorRows: DocProd[] = Array.isArray(doctors.data) ? doctors.data : (doctors.data?.rows ?? []);
+  const totalRevenue = revenueRows.reduce((s, r) => s + (Number(r.revenue) || 0), 0);
 
   return (
     <div className="space-y-5 -mt-6">
@@ -52,52 +64,52 @@ export default function Reports() {
         <Panel title={`Revenue by Branch — ${rm(totalRevenue, 0)} total`}>
           {revenue.isLoading && <Skeleton className="h-40 w-full" />}
           <div className="divide-y divide-slate-100">
-            {(revenue.data ?? []).map((r, i) => (
+            {revenueRows.map((r, i) => (
               <div key={i} className="py-2.5 flex items-center justify-between">
                 <p className="text-sm text-slate-700">{r.branchName ?? r.branchId ?? "Branch"}</p>
                 <span className="text-sm font-semibold">{rm(r.revenue ?? 0)}</span>
               </div>
             ))}
-            {!revenue.isLoading && !(revenue.data ?? []).length && <EmptyState title="No revenue data" />}
+            {!revenue.isLoading && !revenueRows.length && <EmptyState title="No revenue data" />}
           </div>
         </Panel>
 
         <Panel title="Treatment Mix">
           {mix.isLoading && <Skeleton className="h-40 w-full" />}
           <div className="divide-y divide-slate-100">
-            {(mix.data ?? []).slice(0, 15).map((m, i) => (
+            {mixRows.slice(0, 15).map((m, i) => (
               <div key={i} className="py-2.5 flex items-center justify-between">
                 <p className="text-sm text-slate-700">{m.treatmentName ?? m.category ?? "Treatment"}</p>
                 <span className="text-sm font-semibold">{m.count}×</span>
               </div>
             ))}
-            {!mix.isLoading && !(mix.data ?? []).length && <EmptyState title="No treatment data" />}
+            {!mix.isLoading && !mixRows.length && <EmptyState title="No treatment data" />}
           </div>
         </Panel>
 
         <Panel title="Appointment Trends">
           {trends.isLoading && <Skeleton className="h-40 w-full" />}
           <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
-            {(trends.data ?? []).map((t, i) => (
+            {trendRows.map((t, i) => (
               <div key={i} className="py-2 flex items-center justify-between">
                 <p className="text-sm text-slate-700">{t.date}</p>
                 <span className="text-sm font-semibold">{t.count} appts</span>
               </div>
             ))}
-            {!trends.isLoading && !(trends.data ?? []).length && <EmptyState title="No appointment data" />}
+            {!trends.isLoading && !trendRows.length && <EmptyState title="No appointment data" />}
           </div>
         </Panel>
 
         <Panel title="Doctor Production">
           {doctors.isLoading && <Skeleton className="h-40 w-full" />}
           <div className="divide-y divide-slate-100">
-            {(doctors.data ?? []).map((d, i) => (
+            {doctorRows.map((d, i) => (
               <div key={i} className="py-2.5 flex items-center justify-between">
                 <p className="text-sm text-slate-700">{d.doctorName ?? d.doctorId ?? "Doctor"}</p>
                 <span className="text-sm font-semibold">{rm(d.revenue ?? 0)}</span>
               </div>
             ))}
-            {!doctors.isLoading && !(doctors.data ?? []).length && <EmptyState title="No doctor production data" />}
+            {!doctors.isLoading && !doctorRows.length && <EmptyState title="No doctor production data" />}
           </div>
         </Panel>
       </div>

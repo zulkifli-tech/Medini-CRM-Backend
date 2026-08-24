@@ -80,7 +80,8 @@ async function doFetch<T>(path: string, init: RequestInit = {}, retry = true): P
 
   const res = await fetch(`${API_BASE}/api/v1${path}`, { ...init, headers });
 
-  if (res.status === 401 && retry && refreshHandler) {
+  const isAuthEndpoint = path.startsWith('/auth/login') || path.startsWith('/auth/register');
+  if (res.status === 401 && retry && refreshHandler && !isAuthEndpoint) {
     const refreshed = await refreshHandler();
     if (refreshed) return doFetch<T>(path, init, false);
     clearTokens();

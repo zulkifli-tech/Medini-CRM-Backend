@@ -3,23 +3,30 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { PageHeader, StatCard, Panel, EmptyState } from "@/components/shared";
 import { Skeleton } from "@/components/ui/skeleton";
-import { rm } from "@/lib/format";
-import { Users, CalendarDays, TrendingUp, Stethoscope } from "lucide-react";
+import { Users, CalendarDays, Clock, CheckCircle2 } from "lucide-react";
 
-/* S10 T1: dashboard uses only backend-supported context data (no mock insights). */
+/* S10 T1: dashboard consumes the real backend contract. */
 interface DashboardContext {
-  todayAppointments?: number;
-  totalPatients?: number;
-  revenue?: number;
-  activeStaff?: number;
-  [k: string]: unknown;
+  date: string;
+  branchId: string;
+  patients: { total: number };
+  appointments: {
+    total: number;
+    byStatus: Array<{ status: string; n: number }>;
+    queueActive: number;
+    completed: number;
+  };
 }
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const context = useQuery({ queryKey: ["dashboard", "context"], queryFn: () => api.get<DashboardContext>("/dashboard/context") });
+  const context = useQuery({
+    queryKey: ["dashboard", "context"],
+    queryFn: () => api.get<DashboardContext>("/dashboard/context"),
+  });
 
-  const d = context.data ?? {};
+  const d = context.data;
+  const isLoading = context.isLoading;
 
   return (
     <div className="space-y-5 -mt-6">
@@ -29,19 +36,55 @@ export default function Dashboard() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Today's Appointments" value={d.todayAppointments ?? "—"} icon={<CalendarDays className="h-4 w-4" />} loading={context.isLoading} />
-        <StatCard title="Total Patients" value={d.totalPatients ?? "—"} icon={<Users className="h-4 w-4" />} loading={context.isLoading} />
-        <StatCard title="Revenue" value={d.revenue != null ? rm(d.revenue, 0) : "—"} icon={<TrendingUp className="h-4 w-4" />} loading={context.isLoading} />
-        <StatCard title="Active Staff" value={d.activeStaff ?? "—"} icon={<Stethoscope className="h-4 w-4" />} loading={context.isLoading} />
+        <StatCard
+          title="Today's Appointments"
+          value={isLoading ? "—" : d?.appointments.total ?? 0}
+          icon={<CalendarDays className="h-4 w-4" />}
+          loading={isLoading}
+        />
+        <StatCard
+          title="Total Patients"
+          value={isLoading ? "—" : d?.patients.total ?? 0}
+          icon={<Users className="h-4 w-4" />}
+          loading={isLoading}
+        />
+        <StatCard
+          title="Queue Active"
+          value={isLoading ? "—" : d?.appointments.queueActive ?? 0}
+          icon={<Clock className="h-4 w-4" />}
+          loading={isLoading}
+        />
+        <StatCard
+          title="Completed"
+          value={isLoading ? "—" : d?.appointments.completed ?? 0}
+          icon={<CheckCircle2 className="h-4 w-4" />}
+          loading={isLoading}
+        />
       </div>
 
-      <Panel title="Dashboard Context">
-        {context.isLoading && <Skeleton className="h-32 w-full" />}
-        {!context.isLoading && !context.data && (
-          <EmptyState title="No dashboard data" description="The backend dashboard context returned no data for your scope." />
+      <Panel title="Today's Appointment Status">
+        {isLoading && <Skeleton className="h-32 w-full" />}
+        {!isLoading && !d && (
+          <EmptyState
+            title="No dashboard data"
+            description="The backend dashboard context returned no data for your scope."
+          />
         )}
-        {context.data && (
-          <pre className="text-xs text-slate-600 bg-slate-50 rounded-lg p-4 overflow-x-auto">{JSON.stringify(context.data, null, 2)}</pre>
+        {!isLoading && d && d.appointments.byStatus.length === 0 && (
+          <EmptyState
+            title="No appointments today"
+            description="There are no appointments scheduled for today."
+          />
+        )}
+        {!isLoading && d && d.appointments.byStatus.length > 0 && (
+          <div className="space-y-2">
+            {d.appointments.byStatus.map((s) => (
+              <div key={s.status} className="flex items-center justify-between text-sm">
+                <span className="capitalize text-slate-700">{s.status.replace(/-/g, " ")}</span>
+                <span className="font-medium text-slate-900">{s.n}</span>
+              </div>
+            ))}
+          </div>
         )}
       </Panel>
     </div>

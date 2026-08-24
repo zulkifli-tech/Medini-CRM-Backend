@@ -73,7 +73,7 @@ export default function Patient360() {
                       <p className="text-sm font-medium text-slate-800">{ev.summary}</p>
                       <span className="text-xs text-slate-400">{fmtDateTime(ev.createdAt)}</span>
                     </div>
-                    <p className="text-xs text-slate-400 capitalize">{ev.type.replace(/_/g, " ")}</p>
+                    <p className="text-xs text-slate-400 capitalize">{(ev.type ?? "event").replace(/_/g, " ")}</p>
                   </div>
                 </div>
               ))}

@@ -74,10 +74,8 @@ const navByRole: Record<string, NavSection[]> = {
       { label: "Patients", path: "/patients", icon: Users },
       { label: "Appointments", path: "/appointments", icon: CalendarDays },
       { label: "WhatsApp Hub", path: "/whatsapp", icon: MessageSquare },
-      { label: "Operations", path: "/operations", icon: Building2 },
     ]},
     { section: "System", items: [
-      { label: "AI Assistant", path: "/ai", icon: Bot },
       { label: "Settings", path: "/settings", icon: Settings },
     ]},
   ],
@@ -87,10 +85,8 @@ const navByRole: Record<string, NavSection[]> = {
       { label: "Today's Patients", path: "/appointments", icon: CalendarDays },
       { label: "Patient 360", path: "/patients", icon: Users },
       { label: "Clinical Notes", path: "/clinical", icon: Stethoscope },
-      { label: "X-Ray & Documents", path: "/documents", icon: FolderOpen },
     ]},
     { section: "System", items: [
-      { label: "AI Assistant", path: "/ai", icon: Bot },
       { label: "Profile", path: "/settings", icon: Settings },
     ]},
   ],
@@ -346,7 +342,7 @@ export default function AppLayout() {
             <DropdownMenuContent align="end" className="w-56 rounded-xl">
               <DropdownMenuLabel>
                 <p className="font-semibold">{user?.name}</p>
-                <p className="text-xs text-slate-400 font-normal capitalize">{user?.role?.replace(/_/g, ' ')}</p>
+                <p className="text-xs text-slate-400 font-normal capitalize">{user?.role?.replace(/_/g, ' ') ?? "—"}</p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => navigate("/settings")}><Settings className="h-4 w-4 mr-2" /> Settings</DropdownMenuItem>

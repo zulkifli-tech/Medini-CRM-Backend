@@ -1,13 +1,18 @@
-import path from "path"
-const __dirname = import.meta.dirname
-import react from "@vitejs/plugin-react"
-import { defineConfig } from "vite"
-import { inspectAttr } from 'kimi-plugin-inspect-react'
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import { inspectAttr } from "kimi-plugin-inspect-react";
+import path from "path";
+
+const __dirname = import.meta.dirname;
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [
-    inspectAttr(), react()],
+    // inspectAttr() injects data-inspect attributes in dev only; in production
+    // builds it interferes with SPA mount on cold route loads (blank page).
+    ...(command === "serve" ? [inspectAttr()] : []),
+    react(),
+  ],
   server: {
     port: 5173,
     /* S10 T1: proxy REST calls to the production backend (dev only). */
@@ -28,4 +33,4 @@ export default defineConfig({
     outDir: path.resolve(__dirname, "dist/public"),
     emptyOutDir: true,
   },
-});
+}));

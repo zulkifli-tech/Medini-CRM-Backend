@@ -46,9 +46,12 @@ const statusLabels: Record<string, string> = {
 };
 
 export function StatusBadge({ status, className }: { status: string; className?: string }) {
+  /* Defensive: status may be undefined/null while a query is resolving —
+     .replace on undefined crashes the whole React tree (blank page). */
+  const s = status ?? "unknown";
   return (
-    <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize", statusColors[status] ?? "bg-slate-100 text-slate-600", className)}>
-      {statusLabels[status] ?? status.replace(/_/g, " ")}
+    <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize", statusColors[s] ?? "bg-slate-100 text-slate-600", className)}>
+      {statusLabels[s] ?? s.replace(/_/g, " ")}
     </span>
   );
 }

@@ -32,7 +32,7 @@ export default function Dashboard() {
     <div className="space-y-5 -mt-6">
       <PageHeader
         title={`Welcome${user?.name ? `, ${user.name}` : ""}`}
-        description={`${user?.role?.replace(/_/g, " ") ?? ""} · Medini CRM production dashboard`}
+        description={`${user?.role?.replace(/_/g, " ") ?? "—"} · Medini CRM production dashboard`}
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -80,7 +80,7 @@ export default function Dashboard() {
           <div className="space-y-2">
             {d.appointments.byStatus.map((s) => (
               <div key={s.status} className="flex items-center justify-between text-sm">
-                <span className="capitalize text-slate-700">{s.status.replace(/-/g, " ")}</span>
+                <span className="capitalize text-slate-700">{(s.status ?? "unknown").replace(/-/g, " ")}</span>
                 <span className="font-medium text-slate-900">{s.n}</span>
               </div>
             ))}

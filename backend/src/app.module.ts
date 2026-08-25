@@ -13,6 +13,7 @@ import { OutboxModule } from './infrastructure/outbox/outbox.module';
 import { DatabaseModule } from './infrastructure/database/database.module';
 import { AuthModule } from './core/auth/auth.module';
 import { PatientsModule } from './modules/patients/patients.module';
+import { DocumentsModule } from './modules/documents/documents.module';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { PayorsModule } from './modules/payors/payors.module';
@@ -46,6 +47,7 @@ import { RootController } from './root.controller';
     OutboxModule,
     AuthModule,
     PatientsModule,
+    DocumentsModule,
     AppointmentsModule,
     DashboardModule,
     PayorsModule,

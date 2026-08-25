@@ -44,6 +44,8 @@ export const consentMethodEnum = pgEnum('consent_method', ['verbal', 'written', 
 export const imagingKindEnum = pgEnum('imaging_kind', ['xray', 'cbct', 'opg', 'photo', 'before_after', 'consent', 'document']);
 export const adverseSeverityEnum = pgEnum('adverse_severity', ['mild', 'moderate', 'severe']);
 export const referralStatusEnum = pgEnum('referral_status', ['pending', 'sent', 'acknowledged', 'completed']);
+/* Sprint 8 — documents domain (upload/list/download/status). */
+export const documentStatusEnum = pgEnum('document_status', ['active', 'archived', 'deleted']);
 
 /* ---------- shared audit column helpers ---------- */
 const auditCols = {
@@ -682,6 +684,33 @@ export const clinicalTimelineEvents = pgTable('clinical_timeline_events', {
 }, (t) => [
   index('clinical_timeline_patient_idx').on(t.patientId, t.createdAt),
   index('clinical_timeline_type_idx').on(t.type),
+]);
+
+/* ============================================================================
+   SPRINT 8 — DOCUMENTS DOMAIN
+   Branch-scoped document storage metadata (bytes live in S3-compatible object
+   storage; this table is the catalog). Optional patient link, soft-delete via
+   deleted_at, RLS branch boundary (hq=all, manager/doctor=own branch).
+   ==========================================================================*/
+export const documents = pgTable('documents', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull(),
+  branchId: uuid('branch_id').notNull().references(() => branches.id, { onDelete: 'restrict' }),
+  patientId: uuid('patient_id').references(() => patients.id, { onDelete: 'set null' }), /* optional link */
+  title: varchar('title', { length: 256 }).notNull(),
+  category: varchar('category', { length: 64 }),                 /* consent|xray|invoice|id|other */
+  fileName: varchar('file_name', { length: 512 }).notNull(),     /* original upload name */
+  mimeType: varchar('mime_type', { length: 128 }).notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  storageKey: text('storage_key').notNull(),                     /* S3 object key */
+  status: documentStatusEnum('status').notNull().default('active'),
+  uploadedBy: uuid('uploaded_by'),                              /* staff.id of uploader */
+  ...auditCols,
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => [
+  index('documents_org_branch_idx').on(t.orgId, t.branchId),
+  index('documents_patient_idx').on(t.patientId),
+  index('documents_status_idx').on(t.status),
 ]);
 
 /* ============================================================================
@@ -1629,3 +1658,6 @@ export const refreshTokens = pgTable('refresh_tokens', {
 ]);
 
 export type RefreshToken = typeof refreshTokens.$inferSelect;
+
+/* Sprint 8 — documents domain. */
+export type Document = typeof documents.$inferSelect;
